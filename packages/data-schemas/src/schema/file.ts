@@ -69,6 +69,11 @@ const file: Schema<IMongoFile> = new Schema(
     model: {
       type: String,
     },
+    retentionEligible: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     width: Number,
     height: Number,
     metadata: {

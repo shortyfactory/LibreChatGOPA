@@ -1,11 +1,14 @@
 export * from './Auth';
+export * from './Admin';
 export * from './Agents';
 export * from './Endpoints';
 export * from './Files';
+export * from './DeepL';
 /* Memories */
 export * from './Memories';
 export * from './Messages';
 export * from './Misc';
+export * from './SDG';
 export * from './Tools';
 export * from './connection';
 export * from './Favorites';

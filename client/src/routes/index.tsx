@@ -12,14 +12,20 @@ import { MarketplaceProvider } from '~/components/Agents/MarketplaceContext';
 import AgentMarketplace from '~/components/Agents/Marketplace';
 import { OAuthSuccess, OAuthError } from '~/components/OAuth';
 import { AuthContextProvider } from '~/hooks/AuthContext';
+import AdminAnalytics from './AdminAnalytics';
+import AdminModeration from './AdminModeration';
+import AdminUsers from './AdminUsers';
 import RouteErrorBoundary from './RouteErrorBoundary';
 import StartupLayout from './Layouts/Startup';
 import LoginLayout from './Layouts/Login';
 import dashboardRoutes from './Dashboard';
 import ShareRoute from './ShareRoute';
 import ChatRoute from './ChatRoute';
+import DeepL from './DeepL';
+import SDG from './SDG';
 import Search from './Search';
 import Root from './Root';
+import UserGuide from './UserGuide';
 
 const AuthLayout = () => (
   <AuthContextProvider>
@@ -110,6 +116,30 @@ export const router = createBrowserRouter(
             {
               path: 'search',
               element: <Search />,
+            },
+            {
+              path: 'guide',
+              element: <UserGuide />,
+            },
+            {
+              path: 'sdg',
+              element: <SDG />,
+            },
+            {
+              path: 'deepl',
+              element: <DeepL />,
+            },
+            {
+              path: 'admin/users',
+              element: <AdminUsers />,
+            },
+            {
+              path: 'admin/moderation',
+              element: <AdminModeration />,
+            },
+            {
+              path: 'admin/analytics',
+              element: <AdminAnalytics />,
             },
             {
               path: 'agents',

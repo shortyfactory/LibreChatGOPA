@@ -154,4 +154,57 @@ describe('AppService interface configuration', () => {
     // Verify that peoplePicker is undefined when not provided
     expect(result.interfaceConfig?.peoplePicker).toBeUndefined();
   });
+
+  it('should keep auth branding and external resource links from interface config', async () => {
+    const config = {
+      interface: {
+        authBranding: {
+          title: {
+            en: 'GOPA AI Chatbot',
+          },
+          imageUrl: '/assets/chatbot-ui-logo.png',
+          notice: {
+            text: {
+              en: 'Complete the internal AI training before using the chatbot.',
+            },
+          },
+        },
+        externalLinks: [
+          {
+            label: {
+              en: 'AI Training',
+            },
+            url: 'https://example.com/training',
+            locations: ['login', 'account'],
+          },
+        ],
+      },
+    };
+
+    const result = await AppService({ config });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        interfaceConfig: expect.objectContaining({
+          authBranding: expect.objectContaining({
+            imageUrl: '/assets/chatbot-ui-logo.png',
+            title: expect.objectContaining({
+              en: 'GOPA AI Chatbot',
+            }),
+            notice: expect.objectContaining({
+              text: expect.objectContaining({
+                en: 'Complete the internal AI training before using the chatbot.',
+              }),
+            }),
+          }),
+          externalLinks: expect.arrayContaining([
+            expect.objectContaining({
+              url: 'https://example.com/training',
+              locations: ['login', 'account'],
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
 });

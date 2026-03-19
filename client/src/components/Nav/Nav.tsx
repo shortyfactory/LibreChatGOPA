@@ -27,6 +27,7 @@ import { useConversationsInfiniteQuery, useTitleGeneration } from '~/data-provid
 import { Conversations } from '~/components/Conversations';
 import SearchBar from './SearchBar';
 import NewChat from './NewChat';
+import QuickLinks from './QuickLinks';
 import { cn } from '~/utils';
 import store from '~/store';
 
@@ -234,6 +235,7 @@ const Nav = memo(
               headerButtons={headerButtons}
               isSmallScreen={isSmallScreen}
             />
+            <QuickLinks onNavigate={itemToggleNav} />
             <div className="flex min-h-0 flex-grow flex-col overflow-hidden">
               <Conversations
                 conversations={conversations}

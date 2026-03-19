@@ -23,6 +23,7 @@ const {
 } = require('@librechat/api');
 const { connectDb, indexSync } = require('~/db');
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
+const { initializeFileRetentionCleanup } = require('./services/FileRetentionService');
 const createValidateImageRequest = require('./middleware/validateImageRequest');
 const { jwtLogin, ldapLogin, passportLogin } = require('~/strategies');
 const { updateInterfacePermissions } = require('~/models/interface');
@@ -137,11 +138,14 @@ const startServer = async () => {
   /* API Endpoints */
   app.use('/api/auth', routes.auth);
   app.use('/api/admin', routes.adminAuth);
+  app.use('/api/admin', routes.admin);
   app.use('/api/actions', routes.actions);
   app.use('/api/keys', routes.keys);
   app.use('/api/api-keys', routes.apiKeys);
   app.use('/api/user', routes.user);
   app.use('/api/search', routes.search);
+  app.use('/api/deepl', routes.deepl);
+  app.use('/api/sdg', routes.sdg);
   app.use('/api/messages', routes.messages);
   app.use('/api/convos', routes.convos);
   app.use('/api/presets', routes.presets);
@@ -208,6 +212,7 @@ const startServer = async () => {
     const streamServices = createStreamServices();
     GenerationJobManager.configure(streamServices);
     GenerationJobManager.initialize();
+    initializeFileRetentionCleanup(appConfig);
 
     const inspectFlags = process.execArgv.some((arg) => arg.startsWith('--inspect'));
     if (inspectFlags || isEnabled(process.env.MEM_DIAG)) {

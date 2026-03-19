@@ -1,6 +1,7 @@
 const accessPermissions = require('./accessPermissions');
 const assistants = require('./assistants');
 const categories = require('./categories');
+const admin = require('./admin');
 const adminAuth = require('./admin/auth');
 const endpoints = require('./endpoints');
 const staticRoute = require('./static');
@@ -13,6 +14,8 @@ const actions = require('./actions');
 const apiKeys = require('./apiKeys');
 const banner = require('./banner');
 const search = require('./search');
+const deepl = require('./deepl');
+const sdg = require('./sdg');
 const models = require('./models');
 const convos = require('./convos');
 const config = require('./config');
@@ -30,6 +33,7 @@ const mcp = require('./mcp');
 module.exports = {
   mcp,
   auth,
+  admin,
   adminAuth,
   keys,
   apiKeys,
@@ -43,6 +47,8 @@ module.exports = {
   agents,
   convos,
   search,
+  deepl,
+  sdg,
   config,
   models,
   prompts,

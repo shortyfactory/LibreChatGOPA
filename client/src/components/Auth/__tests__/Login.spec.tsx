@@ -10,12 +10,14 @@ import AuthLayout from '~/components/Auth/AuthLayout';
 import Login from '~/components/Auth/Login';
 
 jest.mock('librechat-data-provider/react-query');
+jest.mock('@librechat/client', () => jest.requireActual('test/mocks/librechatClient'));
 
 const mockStartupConfig = {
   isFetching: false,
   isLoading: false,
   isError: false,
   data: {
+    appTitle: 'LibreChat',
     socialLogins: ['google', 'facebook', 'openid', 'github', 'discord', 'saml'],
     discordLoginEnabled: true,
     facebookLoginEnabled: true,
@@ -34,7 +36,7 @@ const mockStartupConfig = {
     emailLoginEnabled: true,
     socialLoginEnabled: true,
     serverDomain: 'mock-server',
-  },
+  } as TStartupConfig,
 };
 
 const setup = ({
@@ -153,6 +155,75 @@ test('renders login form', () => {
   );
 });
 
+test('renders configured auth branding and login resource links', () => {
+  const { getByRole, getByText, queryByRole } = setup({
+    useGetStartupConfigReturnValue: {
+      ...mockStartupConfig,
+      data: {
+        ...mockStartupConfig.data,
+        appTitle: 'LibreChat',
+        interface: {
+          authBranding: {
+            title: {
+              en: 'GOPA AI Chatbot',
+            },
+            imageUrl: '/assets/chatbot-ui-logo.png',
+            imageAlt: {
+              en: 'GOPA visual',
+            },
+            notice: {
+              text: {
+                en: 'Complete the internal AI training before using the chatbot.',
+              },
+            },
+          },
+          externalLinks: [
+            {
+              label: {
+                en: 'AI Training',
+              },
+              url: 'https://example.com/training',
+              locations: ['login'],
+            },
+            {
+              label: {
+                en: 'Policy',
+              },
+              url: 'https://example.com/policy',
+              locations: ['login', 'account'],
+            },
+            {
+              label: {
+                en: 'Account only',
+              },
+              url: 'https://example.com/account',
+              locations: ['account'],
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  expect(getByRole('heading', { name: 'GOPA AI Chatbot' })).toBeInTheDocument();
+  expect(getByRole('img', { name: 'GOPA visual' })).toHaveAttribute(
+    'src',
+    '/assets/chatbot-ui-logo.png',
+  );
+  expect(
+    getByText('Complete the internal AI training before using the chatbot.'),
+  ).toBeInTheDocument();
+  expect(getByRole('link', { name: 'AI Training' })).toHaveAttribute(
+    'href',
+    'https://example.com/training',
+  );
+  expect(getByRole('link', { name: 'Policy' })).toHaveAttribute(
+    'href',
+    'https://example.com/policy',
+  );
+  expect(queryByRole('link', { name: 'Account only' })).not.toBeInTheDocument();
+});
+
 test('calls loginUser.mutate on login', async () => {
   const mutate = jest.fn();
   const { getByLabelText } = setup({
@@ -176,7 +247,7 @@ test('calls loginUser.mutate on login', async () => {
 });
 
 test('Navigates to / on successful login', async () => {
-  const { getByLabelText, history } = setup({
+  const { getByLabelText } = setup({
     // @ts-ignore - we don't need all parameters of the QueryObserverResult
     useLoginUserReturnValue: {
       isLoading: false,
@@ -202,5 +273,5 @@ test('Navigates to / on successful login', async () => {
   await userEvent.type(passwordInput, 'password');
   await userEvent.click(submitButton);
 
-  waitFor(() => expect(history.location.pathname).toBe('/'));
+  await waitFor(() => expect(window.location.pathname).toBe('/'));
 });

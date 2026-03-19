@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Info } from 'lucide-react';
 import { ErrorTypes, registerPage } from 'librechat-data-provider';
 import { OpenIDIcon, useToastContext } from '@librechat/client';
 import { useOutletContext, useSearchParams, useLocation } from 'react-router-dom';
 import type { TLoginLayoutContext } from '~/common';
-import { getLoginError, persistRedirectToSession } from '~/utils';
 import { ErrorMessage } from '~/components/Auth/ErrorMessage';
 import SocialButton from '~/components/Auth/SocialButton';
 import { useAuthContext } from '~/hooks/AuthContext';
-import { useLocalize } from '~/hooks';
+import { useLocalize, useLocalizedConfig } from '~/hooks';
+import { getLoginError, persistRedirectToSession } from '~/utils';
+import { getInterfaceExternalLinks } from '~/utils/interfaceLinks';
 import LoginForm from './LoginForm';
 
 interface LoginLocationState {
@@ -16,6 +18,7 @@ interface LoginLocationState {
 
 function Login() {
   const localize = useLocalize();
+  const getLocalizedValue = useLocalizedConfig();
   const { showToast } = useToastContext();
   const { error, setError, login } = useAuthContext();
   const { startupConfig } = useOutletContext<TLoginLayoutContext>();
@@ -71,6 +74,26 @@ function Login() {
     }
   }, [shouldAutoRedirect, startupConfig]);
 
+  const authBranding = startupConfig?.interface?.authBranding;
+  const brandingImageAlt =
+    authBranding?.imageAlt != null
+      ? getLocalizedValue(
+          authBranding.imageAlt,
+          localize('com_ui_logo', { 0: startupConfig?.appTitle ?? 'LibreChat' }),
+        )
+      : localize('com_ui_logo', { 0: startupConfig?.appTitle ?? 'LibreChat' });
+  const noticeText =
+    authBranding?.notice?.text != null ? getLocalizedValue(authBranding.notice.text, '') : null;
+  const loginExternalLinks = getInterfaceExternalLinks(startupConfig?.interface, 'login');
+  const brandingTitle =
+    authBranding?.title != null
+      ? getLocalizedValue(
+          authBranding.title,
+          startupConfig?.appTitle ?? localize('com_auth_welcome_back'),
+        )
+      : localize('com_auth_welcome_back');
+  const hasBrandedResources = authBranding != null || loginExternalLinks.length > 0;
+
   if (shouldAutoRedirect) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
@@ -99,15 +122,64 @@ function Login() {
   }
 
   return (
-    <>
-      {error != null && <ErrorMessage>{localize(getLoginError(error))}</ErrorMessage>}
+    <div className="flex w-full flex-col items-center gap-4 text-gray-900 dark:text-white">
+      <div className="w-full text-center">
+        <h1 className="text-3xl font-semibold">{brandingTitle}</h1>
+      </div>
+      {authBranding?.imageUrl != null && (
+        <div className="w-full overflow-hidden rounded-md border border-gray-200 shadow-sm dark:border-gray-700">
+          <img
+            src={authBranding.imageUrl}
+            alt={brandingImageAlt}
+            className="h-auto w-full object-contain"
+          />
+        </div>
+      )}
+      {(noticeText || loginExternalLinks.length > 0) && (
+        <section className="w-full rounded-md border border-amber-400 bg-white p-4 shadow-sm dark:border-amber-500 dark:bg-gray-900/70">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-amber-400 text-amber-500 dark:border-amber-500 dark:text-amber-400">
+              <Info className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 space-y-3">
+              {noticeText && (
+                <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-100">
+                  {noticeText}
+                </p>
+              )}
+              {loginExternalLinks.length > 0 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                  {loginExternalLinks.map((link) => (
+                    <a
+                      key={`${link.url}-${getLocalizedValue(link.label, link.url)}`}
+                      className="font-semibold text-amber-500 underline underline-offset-4 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                      href={link.url}
+                      target={link.openNewTab === false ? '_self' : '_blank'}
+                      rel={link.openNewTab === false ? undefined : 'noreferrer'}
+                    >
+                      {getLocalizedValue(link.label, link.url)}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+      {error != null && (
+        <div className="w-full">
+          <ErrorMessage>{localize(getLoginError(error))}</ErrorMessage>
+        </div>
+      )}
       {startupConfig?.emailLoginEnabled === true && (
-        <LoginForm
-          onSubmit={login}
-          startupConfig={startupConfig}
-          error={error}
-          setError={setError}
-        />
+        <div className="w-full">
+          <LoginForm
+            onSubmit={login}
+            startupConfig={startupConfig}
+            error={error}
+            setError={setError}
+          />
+        </div>
       )}
       {startupConfig?.registrationEnabled === true && (
         <p className="my-4 text-center text-sm font-light text-gray-700 dark:text-white">
@@ -115,13 +187,17 @@ function Login() {
           {localize('com_auth_no_account')}{' '}
           <a
             href={registerPage()}
-            className="inline-flex p-1 text-sm font-medium text-green-600 underline decoration-transparent transition-all duration-200 hover:text-green-700 hover:decoration-green-700 focus:text-green-700 focus:decoration-green-700 dark:text-green-500 dark:hover:text-green-400 dark:hover:decoration-green-400 dark:focus:text-green-400 dark:focus:decoration-green-400"
+            className={
+              hasBrandedResources
+                ? 'inline-flex p-1 text-sm font-medium text-amber-600 underline decoration-transparent transition-all duration-200 hover:text-amber-700 hover:decoration-amber-700 focus:text-amber-700 focus:decoration-amber-700 dark:text-amber-400 dark:hover:text-amber-300 dark:hover:decoration-amber-300 dark:focus:text-amber-300 dark:focus:decoration-amber-300'
+                : 'inline-flex p-1 text-sm font-medium text-green-600 underline decoration-transparent transition-all duration-200 hover:text-green-700 hover:decoration-green-700 focus:text-green-700 focus:decoration-green-700 dark:text-green-500 dark:hover:text-green-400 dark:hover:decoration-green-400 dark:focus:text-green-400 dark:focus:decoration-green-400'
+            }
           >
             {localize('com_auth_sign_up')}
           </a>
         </p>
       )}
-    </>
+    </div>
   );
 }
 

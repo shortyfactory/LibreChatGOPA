@@ -586,6 +586,33 @@ export type TTermsOfService = z.infer<typeof termsOfServiceSchema>;
 const localizedStringSchema = z.union([z.string(), z.record(z.string())]);
 export type LocalizedString = z.infer<typeof localizedStringSchema>;
 
+const interfaceExternalLinkLocationSchema = z.enum(['login', 'account']);
+export type TInterfaceExternalLinkLocation = z.infer<typeof interfaceExternalLinkLocationSchema>;
+
+const interfaceExternalLinkSchema = z.object({
+  label: localizedStringSchema,
+  url: z.string(),
+  openNewTab: z.boolean().optional(),
+  locations: z.array(interfaceExternalLinkLocationSchema).optional(),
+});
+
+export type TInterfaceExternalLink = z.infer<typeof interfaceExternalLinkSchema>;
+
+const authBrandingSchema = z
+  .object({
+    title: localizedStringSchema.optional(),
+    imageUrl: z.string().optional(),
+    imageAlt: localizedStringSchema.optional(),
+    notice: z
+      .object({
+        text: localizedStringSchema.optional(),
+      })
+      .optional(),
+  })
+  .optional();
+
+export type TAuthBrandingConfig = z.infer<typeof authBrandingSchema>;
+
 const mcpServersSchema = z
   .object({
     placeholder: z.string().optional(),
@@ -614,6 +641,8 @@ export const interfaceSchema = z
       .optional(),
     termsOfService: termsOfServiceSchema.optional(),
     customWelcome: z.string().optional(),
+    authBranding: authBrandingSchema,
+    externalLinks: z.array(interfaceExternalLinkSchema).optional(),
     mcpServers: mcpServersSchema.optional(),
     endpointsMenu: z.boolean().optional(),
     modelSelect: z.boolean().optional(),
