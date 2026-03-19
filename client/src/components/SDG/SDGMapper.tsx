@@ -8,6 +8,7 @@ import {
 import type { SDGMappingNode, SDGMapResponse } from 'librechat-data-provider';
 import type { FormEvent } from 'react';
 import { getSDGNodeTitle } from '~/components/SDG/sdgMetadata';
+import SidebarReopenButton from '~/components/Nav/SidebarReopenButton';
 import PageHeaderCard from '~/components/PageHeaderCard';
 import { useMapSDGMutation } from '~/data-provider';
 import { useLocalize } from '~/hooks';
@@ -196,6 +197,7 @@ export default function SDGMapper() {
 
   return (
     <div className="h-full overflow-auto p-6">
+      <SidebarReopenButton />
       <div className="mx-auto max-w-7xl space-y-4">
         <PageHeaderCard
           iconSrc="/assets/sdg_32.png"

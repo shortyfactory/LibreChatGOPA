@@ -10,6 +10,7 @@ import {
   useAdminUnbanUserMutation,
   useGetAdminUsersQuery,
 } from '~/data-provider';
+import SidebarReopenButton from '~/components/Nav/SidebarReopenButton';
 import PageHeaderCard from '~/components/PageHeaderCard';
 import { useAuthContext, useLocalize } from '~/hooks';
 
@@ -173,6 +174,7 @@ export default function AdminUsers() {
 
   return (
     <div className="h-full overflow-auto p-6">
+      <SidebarReopenButton />
       <div className="mx-auto max-w-6xl space-y-4">
         <PageHeaderCard
           iconSrc="/assets/users_32.png"

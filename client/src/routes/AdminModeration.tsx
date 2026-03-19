@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Spinner } from '@librechat/client';
 import { SystemRoles } from 'librechat-data-provider';
 import { useGetAdminModerationQuery } from '~/data-provider';
+import SidebarReopenButton from '~/components/Nav/SidebarReopenButton';
 import PageHeaderCard from '~/components/PageHeaderCard';
 import { useAuthContext, useLocalize } from '~/hooks';
 
@@ -158,6 +159,7 @@ export default function AdminModeration() {
 
   return (
     <div className="h-full overflow-auto p-6">
+      <SidebarReopenButton />
       <div className="mx-auto max-w-6xl space-y-4">
         <PageHeaderCard
           iconSrc="/assets/moderation_32.png"

@@ -17,6 +17,7 @@ import {
   useGetDeepLLanguagesQuery,
   useUploadDeepLDocumentMutation,
 } from '~/data-provider';
+import SidebarReopenButton from '~/components/Nav/SidebarReopenButton';
 import PageHeaderCard from '~/components/PageHeaderCard';
 import { useLocalize } from '~/hooks';
 
@@ -278,6 +279,7 @@ export default function DeeplTranslator() {
 
   return (
     <div className="h-full overflow-auto p-6">
+      <SidebarReopenButton />
       <div className="mx-auto max-w-7xl space-y-4">
         <PageHeaderCard
           iconSrc="/assets/ai_translator_icon.png"
