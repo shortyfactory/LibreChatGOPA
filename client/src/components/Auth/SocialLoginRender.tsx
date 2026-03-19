@@ -29,6 +29,13 @@ function SocialLoginRender({
   const showTermsCheckbox =
     startupConfig.openidLoginEnabled && startupConfig.socialLogins?.includes('openid');
   const disableOpenId = showTermsCheckbox && !acceptedTerms;
+  const isStandaloneSocialLogin = startupConfig.emailLoginEnabled !== true;
+  const socialSectionClassName = isStandaloneSocialLogin ? 'mt-6' : '';
+  const termsCardClassName = [
+    'rounded-2xl border border-border-light bg-surface-primary px-4 py-3',
+    isStandaloneSocialLogin ? 'mb-6' : 'mb-4',
+  ].join(' ');
+  const providerListClassName = isStandaloneSocialLogin ? 'mt-4' : 'mt-2';
 
   const providerComponents = {
     discord: startupConfig.discordLoginEnabled && (
@@ -125,7 +132,7 @@ function SocialLoginRender({
 
   return (
     startupConfig.socialLoginEnabled && (
-      <>
+      <div className={socialSectionClassName}>
         {startupConfig.emailLoginEnabled && (
           <>
             <div className="relative mt-6 flex w-full items-center justify-center border border-t border-gray-300 uppercase dark:border-gray-600">
@@ -137,7 +144,7 @@ function SocialLoginRender({
           </>
         )}
         {showTermsCheckbox && (
-          <div className="mb-4 rounded-2xl border border-border-light bg-surface-primary px-4 py-3">
+          <div className={termsCardClassName}>
             <div className="flex items-start gap-3">
               <input
                 id="accept-terms-openid-login"
@@ -160,10 +167,10 @@ function SocialLoginRender({
             </div>
           </div>
         )}
-        <div className="mt-2">
+        <div className={providerListClassName}>
           {startupConfig.socialLogins?.map((provider) => providerComponents[provider] || null)}
         </div>
-      </>
+      </div>
     )
   );
 }
