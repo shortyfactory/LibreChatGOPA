@@ -163,7 +163,16 @@ test('renders fallback GOPA branding and notice when login interface config is m
     'src',
     '/assets/chatbot-ui-logo.png',
   );
-  expect(getByText(/I confirm that I have completed the GOPA AI Training/i)).toBeInTheDocument();
+  expect(
+    getByText(
+      (_, element) =>
+        element?.tagName.toLowerCase() === 'p' &&
+        (element.textContent?.includes(
+          'I confirm that I have completed the GOPA AI Training and that I have read and agree with the GOPA Group Policy on the Use of Generative AI.',
+        ) ??
+          false),
+    ),
+  ).toBeInTheDocument();
   expect(getByRole('link', { name: 'GOPA AI Training' })).toHaveAttribute(
     'href',
     'https://gopagroup.sharepoint.com/sites/Academy/SitePages/GOPA-Group-AI-Chatbot.aspx',

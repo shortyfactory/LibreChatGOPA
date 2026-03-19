@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Info } from 'lucide-react';
 import { ErrorTypes, registerPage } from 'librechat-data-provider';
 import { OpenIDIcon, useToastContext } from '@librechat/client';
 import { useOutletContext, useSearchParams, useLocation } from 'react-router-dom';
@@ -20,8 +19,12 @@ interface LoginLocationState {
 const defaultBrandingTitle = 'GOPA AI Chatbot';
 const defaultBrandingImageUrl = '/assets/chatbot-ui-logo.png';
 const defaultBrandingImageAlt = 'GOPA AI Chatbot visual';
-const defaultNoticeText =
-  'I confirm that I have completed the GOPA AI Training and that I have read and agree with the GOPA Group Policy on the Use of Generative AI. I acknowledge the importance of adhering to these guidelines to maintain the integrity and effectiveness of our GOPA AI Chatbot.';
+const infoGlyph = 'i';
+const defaultNoticePrefix = 'I confirm that I have completed the ';
+const defaultNoticeMiddle = ' and that I have read and agree with the ';
+const defaultNoticeSuffix =
+  '. I acknowledge the importance of adhering to these guidelines to maintain the integrity and effectiveness of our GOPA AI Chatbot.';
+const defaultNoticeText = `${defaultNoticePrefix}GOPA AI Training${defaultNoticeMiddle}GOPA Group Policy on the Use of Generative AI${defaultNoticeSuffix}`;
 const defaultLoginExternalLinks: TInterfaceExternalLink[] = [
   {
     label: {
@@ -115,11 +118,15 @@ function Login() {
     configuredLoginExternalLinks.length > 0
       ? configuredLoginExternalLinks
       : defaultLoginExternalLinks;
+  const primaryLoginLink = loginExternalLinks[0];
+  const secondaryLoginLink = loginExternalLinks[1];
   const brandingTitle =
     authBranding?.title != null
       ? getLocalizedValue(authBranding.title, defaultBrandingTitle)
       : defaultBrandingTitle;
   const hasBrandedResources = true;
+  const useInlineGopaNotice =
+    noticeText === defaultNoticeText && primaryLoginLink != null && secondaryLoginLink != null;
 
   if (shouldAutoRedirect) {
     return (
@@ -163,20 +170,64 @@ function Login() {
         </div>
       )}
       {(noticeText || loginExternalLinks.length > 0) && (
-        <section className="w-full rounded-md border border-amber-400 bg-white p-4 shadow-sm dark:border-amber-500 dark:bg-gray-900/70">
+        <section className="w-full rounded-md border border-border-light bg-white px-5 py-4 shadow-sm dark:bg-gray-900/70">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-amber-400 text-amber-500 dark:border-amber-500 dark:text-amber-400">
-              <Info className="h-5 w-5" aria-hidden="true" />
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-amber-400 bg-amber-50/80 text-amber-500 shadow-[0_0_0_4px_rgba(251,191,36,0.12)] dark:border-amber-500 dark:bg-amber-500/10 dark:text-amber-300">
+              <span
+                aria-hidden="true"
+                className="font-serif text-3xl italic leading-none tracking-tight"
+              >
+                {infoGlyph}
+              </span>
             </div>
-            <div className="min-w-0 space-y-3">
-              {noticeText && (
-                <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-100">
-                  {noticeText}
+            <div className="min-w-0">
+              {useInlineGopaNotice ? (
+                <p className="text-[15px] leading-9 text-gray-800 dark:text-gray-100">
+                  {defaultNoticePrefix}
+                  <a
+                    className="font-semibold text-amber-500 underline underline-offset-4 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                    href={primaryLoginLink.url}
+                    target={primaryLoginLink.openNewTab === false ? '_self' : '_blank'}
+                    rel={primaryLoginLink.openNewTab === false ? undefined : 'noreferrer'}
+                  >
+                    {getLocalizedValue(primaryLoginLink.label, primaryLoginLink.url)}
+                  </a>
+                  {defaultNoticeMiddle}
+                  <a
+                    className="font-semibold text-amber-500 underline underline-offset-4 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                    href={secondaryLoginLink.url}
+                    target={secondaryLoginLink.openNewTab === false ? '_self' : '_blank'}
+                    rel={secondaryLoginLink.openNewTab === false ? undefined : 'noreferrer'}
+                  >
+                    {getLocalizedValue(secondaryLoginLink.label, secondaryLoginLink.url)}
+                  </a>
+                  {defaultNoticeSuffix}
                 </p>
+              ) : (
+                noticeText && (
+                  <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-100">
+                    {noticeText}
+                  </p>
+                )
               )}
-              {loginExternalLinks.length > 0 && (
-                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+              {!useInlineGopaNotice && loginExternalLinks.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
                   {loginExternalLinks.map((link) => (
+                    <a
+                      key={`${link.url}-${getLocalizedValue(link.label, link.url)}`}
+                      className="font-semibold text-amber-500 underline underline-offset-4 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                      href={link.url}
+                      target={link.openNewTab === false ? '_self' : '_blank'}
+                      rel={link.openNewTab === false ? undefined : 'noreferrer'}
+                    >
+                      {getLocalizedValue(link.label, link.url)}
+                    </a>
+                  ))}
+                </div>
+              )}
+              {useInlineGopaNotice && noticeText && loginExternalLinks.length > 2 && (
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                  {loginExternalLinks.slice(2).map((link) => (
                     <a
                       key={`${link.url}-${getLocalizedValue(link.label, link.url)}`}
                       className="font-semibold text-amber-500 underline underline-offset-4 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
