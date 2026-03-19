@@ -155,6 +155,50 @@ test('renders login form', () => {
   );
 });
 
+test('renders fallback GOPA branding and notice when login interface config is missing', () => {
+  const { getByRole, getByText } = setup();
+
+  expect(getByRole('heading', { name: 'GOPA AI Chatbot' })).toBeInTheDocument();
+  expect(getByRole('img', { name: 'GOPA AI Chatbot visual' })).toHaveAttribute(
+    'src',
+    '/assets/chatbot-ui-logo.png',
+  );
+  expect(getByText(/I confirm that I have completed the GOPA AI Training/i)).toBeInTheDocument();
+  expect(getByRole('link', { name: 'GOPA AI Training' })).toHaveAttribute(
+    'href',
+    'https://gopagroup.sharepoint.com/sites/Academy/SitePages/GOPA-Group-AI-Chatbot.aspx',
+  );
+  expect(
+    getByRole('link', { name: 'GOPA Group Policy on the Use of Generative AI' }),
+  ).toHaveAttribute(
+    'href',
+    'https://gopagroup.sharepoint.com/sites/GOPAGroup-LearningPlatform/SiteAssets/Forms/AllItems.aspx?id=%2Fsites%2FGOPAGroup%2DLearningPlatform%2FSiteAssets%2FSitePages%2FGOPA%2DGroup%2DAI%2DChatbot%2FGOPA%2DGroup%5FPolicy%2Don%2Dthe%2DUse%2Dof%2DGenerative%2DAI%2Epdf&parent=%2Fsites%2FGOPAGroup%2DLearningPlatform%2FSiteAssets%2FSitePages%2FGOPA%2DGroup%2DAI%2DChatbot',
+  );
+});
+
+test('renders fallback GOPA branding for OpenID-only login', () => {
+  const { getByRole, queryByLabelText } = setup({
+    useGetStartupConfigReturnValue: {
+      ...mockStartupConfig,
+      data: {
+        ...mockStartupConfig.data,
+        emailLoginEnabled: false,
+        socialLoginEnabled: true,
+        registrationEnabled: false,
+      },
+    },
+  });
+
+  expect(queryByLabelText(/email/i)).not.toBeInTheDocument();
+  expect(getByRole('heading', { name: 'GOPA AI Chatbot' })).toBeInTheDocument();
+  expect(getByRole('img', { name: 'GOPA AI Chatbot visual' })).toHaveAttribute(
+    'src',
+    '/assets/chatbot-ui-logo.png',
+  );
+  expect(getByRole('checkbox', { name: /Accept terms and conditions/i })).toBeInTheDocument();
+  expect(getByRole('link', { name: /Test OpenID/i })).toHaveAttribute('aria-disabled', 'true');
+});
+
 test('renders configured auth branding and login resource links', () => {
   const { getByRole, getByText, queryByRole } = setup({
     useGetStartupConfigReturnValue: {

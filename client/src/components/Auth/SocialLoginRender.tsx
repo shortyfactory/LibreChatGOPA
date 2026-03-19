@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   GoogleIcon,
   FacebookIcon,
@@ -7,12 +8,11 @@ import {
   AppleIcon,
   SamlIcon,
 } from '@librechat/client';
-
-import SocialButton from './SocialButton';
+import type { TStartupConfig } from 'librechat-data-provider';
 
 import { useLocalize } from '~/hooks';
 
-import { TStartupConfig } from 'librechat-data-provider';
+import SocialButton from './SocialButton';
 
 function SocialLoginRender({
   startupConfig,
@@ -20,10 +20,15 @@ function SocialLoginRender({
   startupConfig: TStartupConfig | null | undefined;
 }) {
   const localize = useLocalize();
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   if (!startupConfig) {
     return null;
   }
+
+  const showTermsCheckbox =
+    startupConfig.openidLoginEnabled && startupConfig.socialLogins?.includes('openid');
+  const disableOpenId = showTermsCheckbox && !acceptedTerms;
 
   const providerComponents = {
     discord: startupConfig.discordLoginEnabled && (
@@ -96,6 +101,7 @@ function SocialLoginRender({
         }
         label={startupConfig.openidLabel}
         id="openid"
+        disabled={disableOpenId}
       />
     ),
     saml: startupConfig.samlLoginEnabled && (
@@ -124,11 +130,35 @@ function SocialLoginRender({
           <>
             <div className="relative mt-6 flex w-full items-center justify-center border border-t border-gray-300 uppercase dark:border-gray-600">
               <div className="absolute bg-white px-3 text-xs text-black dark:bg-gray-900 dark:text-white">
-                Or
+                {localize('com_ui_or')}
               </div>
             </div>
             <div className="mt-8" />
           </>
+        )}
+        {showTermsCheckbox && (
+          <div className="mb-4 rounded-2xl border border-border-light bg-surface-primary px-4 py-3">
+            <div className="flex items-start gap-3">
+              <input
+                id="accept-terms-openid-login"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-border-light text-green-600 focus:ring-green-500"
+                checked={acceptedTerms}
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+              />
+              <div className="space-y-1">
+                <label
+                  htmlFor="accept-terms-openid-login"
+                  className="block text-sm font-medium text-text-primary"
+                >
+                  {localize('com_auth_accept_terms_label')}
+                </label>
+                <p className="text-xs text-text-secondary-alt">
+                  {localize('com_auth_accept_terms_description')}
+                </p>
+              </div>
+            </div>
+          </div>
         )}
         <div className="mt-2">
           {startupConfig.socialLogins?.map((provider) => providerComponents[provider] || null)}

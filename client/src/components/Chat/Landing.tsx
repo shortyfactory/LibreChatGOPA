@@ -132,10 +132,10 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
     return margin;
   }, [lineCount, description, textHasMultipleLines, contentHeight]);
 
-  const greetingText =
-    typeof startupConfig?.interface?.customWelcome === 'string'
-      ? getGreeting()
-      : getGreeting() + (user?.name ? ', ' + user.name : '');
+  const hasCustomWelcome = typeof startupConfig?.interface?.customWelcome === 'string';
+  const greetingText = hasCustomWelcome
+    ? getGreeting()
+    : getGreeting() + (user?.name ? ', ' + user.name : '');
 
   return (
     <div
@@ -186,7 +186,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
             <SplitText
               key={`split-text-${greetingText}${user?.name ? '-user' : ''}`}
               text={greetingText}
-              className={`${getTextSizeClass(greetingText)} font-medium text-text-primary`}
+              className={`${getTextSizeClass(greetingText)} font-medium ${hasCustomWelcome ? 'text-amber-600 dark:text-amber-400' : 'text-text-primary'}`}
               delay={50}
               textAlign="center"
               animationFrom={{ opacity: 0, transform: 'translate3d(0,50px,0)' }}

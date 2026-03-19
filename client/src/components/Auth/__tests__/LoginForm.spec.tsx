@@ -8,6 +8,7 @@ import * as authQueries from '~/data-provider/Auth/queries';
 import Login from '../LoginForm';
 
 jest.mock('librechat-data-provider/react-query');
+jest.mock('@librechat/client', () => jest.requireActual('test/mocks/librechatClient'));
 
 const mockLogin = jest.fn();
 
@@ -106,37 +107,86 @@ beforeEach(() => {
 
 test('renders login form', () => {
   const { getByLabelText } = render(
-    <Login onSubmit={mockLogin} startupConfig={mockStartupConfig} />,
+    <Login
+      onSubmit={mockLogin}
+      startupConfig={mockStartupConfig}
+      error={undefined}
+      setError={jest.fn()}
+    />,
   );
   expect(getByLabelText(/email/i)).toBeInTheDocument();
   expect(getByLabelText(/password/i)).toBeInTheDocument();
+  expect(getByLabelText(/Accept terms and conditions/i)).toBeInTheDocument();
 });
 
 test('submits login form', async () => {
-  const { getByLabelText, getByRole } = render(
-    <Login onSubmit={mockLogin} startupConfig={mockStartupConfig} />,
+  const { getByLabelText } = render(
+    <Login
+      onSubmit={mockLogin}
+      startupConfig={mockStartupConfig}
+      error={undefined}
+      setError={jest.fn()}
+    />,
   );
   const emailInput = getByLabelText(/email/i);
   const passwordInput = getByLabelText(/password/i);
+  const termsCheckbox = getByLabelText(/Accept terms and conditions/i);
   const submitButton = getByTestId(document.body, 'login-button');
 
   await userEvent.type(emailInput, 'test@example.com');
   await userEvent.type(passwordInput, 'password');
+  await userEvent.click(termsCheckbox);
   await userEvent.click(submitButton);
 
   expect(mockLogin).toHaveBeenCalledWith({ email: 'test@example.com', password: 'password' });
 });
 
-test('displays validation error messages', async () => {
-  const { getByLabelText, getByRole, getByText } = render(
-    <Login onSubmit={mockLogin} startupConfig={mockStartupConfig} />,
+test('requires accepting terms before email login', async () => {
+  const { getByLabelText } = render(
+    <Login
+      onSubmit={mockLogin}
+      startupConfig={mockStartupConfig}
+      error={undefined}
+      setError={jest.fn()}
+    />,
   );
   const emailInput = getByLabelText(/email/i);
   const passwordInput = getByLabelText(/password/i);
   const submitButton = getByTestId(document.body, 'login-button');
 
+  expect(submitButton).toBeDisabled();
+
+  await userEvent.type(emailInput, 'test@example.com');
+  await userEvent.type(passwordInput, 'password');
+  expect(submitButton).toBeDisabled();
+
+  await userEvent.click(getByLabelText(/Accept terms and conditions/i));
+  expect(submitButton).not.toBeDisabled();
+
+  await userEvent.click(submitButton);
+  expect(mockLogin).toHaveBeenCalledWith({ email: 'test@example.com', password: 'password' });
+
+  await userEvent.click(getByLabelText(/Accept terms and conditions/i));
+  expect(submitButton).toBeDisabled();
+});
+
+test('displays validation error messages', async () => {
+  const { getByLabelText, getByText } = render(
+    <Login
+      onSubmit={mockLogin}
+      startupConfig={mockStartupConfig}
+      error={undefined}
+      setError={jest.fn()}
+    />,
+  );
+  const emailInput = getByLabelText(/email/i);
+  const passwordInput = getByLabelText(/password/i);
+  const termsCheckbox = getByLabelText(/Accept terms and conditions/i);
+  const submitButton = getByTestId(document.body, 'login-button');
+
   await userEvent.type(emailInput, 'test');
   await userEvent.type(passwordInput, 'pass');
+  await userEvent.click(termsCheckbox);
   await userEvent.click(submitButton);
 
   expect(getByText(/You must enter a valid email address/i)).toBeInTheDocument();

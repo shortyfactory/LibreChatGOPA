@@ -3,6 +3,7 @@ import { Info } from 'lucide-react';
 import { ErrorTypes, registerPage } from 'librechat-data-provider';
 import { OpenIDIcon, useToastContext } from '@librechat/client';
 import { useOutletContext, useSearchParams, useLocation } from 'react-router-dom';
+import type { TInterfaceExternalLink } from 'librechat-data-provider';
 import type { TLoginLayoutContext } from '~/common';
 import { ErrorMessage } from '~/components/Auth/ErrorMessage';
 import SocialButton from '~/components/Auth/SocialButton';
@@ -15,6 +16,28 @@ import LoginForm from './LoginForm';
 interface LoginLocationState {
   redirect_to?: string;
 }
+
+const defaultBrandingTitle = 'GOPA AI Chatbot';
+const defaultBrandingImageUrl = '/assets/chatbot-ui-logo.png';
+const defaultBrandingImageAlt = 'GOPA AI Chatbot visual';
+const defaultNoticeText =
+  'I confirm that I have completed the GOPA AI Training and that I have read and agree with the GOPA Group Policy on the Use of Generative AI. I acknowledge the importance of adhering to these guidelines to maintain the integrity and effectiveness of our GOPA AI Chatbot.';
+const defaultLoginExternalLinks: TInterfaceExternalLink[] = [
+  {
+    label: {
+      en: 'GOPA AI Training',
+    },
+    url: 'https://gopagroup.sharepoint.com/sites/Academy/SitePages/GOPA-Group-AI-Chatbot.aspx',
+    locations: ['login'],
+  },
+  {
+    label: {
+      en: 'GOPA Group Policy on the Use of Generative AI',
+    },
+    url: 'https://gopagroup.sharepoint.com/sites/GOPAGroup-LearningPlatform/SiteAssets/Forms/AllItems.aspx?id=%2Fsites%2FGOPAGroup%2DLearningPlatform%2FSiteAssets%2FSitePages%2FGOPA%2DGroup%2DAI%2DChatbot%2FGOPA%2DGroup%5FPolicy%2Don%2Dthe%2DUse%2Dof%2DGenerative%2DAI%2Epdf&parent=%2Fsites%2FGOPAGroup%2DLearningPlatform%2FSiteAssets%2FSitePages%2FGOPA%2DGroup%2DAI%2DChatbot',
+    locations: ['login'],
+  },
+];
 
 function Login() {
   const localize = useLocalize();
@@ -75,24 +98,28 @@ function Login() {
   }, [shouldAutoRedirect, startupConfig]);
 
   const authBranding = startupConfig?.interface?.authBranding;
+  const brandingImageUrl =
+    authBranding?.imageUrl != null && authBranding.imageUrl.trim().length > 0
+      ? authBranding.imageUrl
+      : defaultBrandingImageUrl;
   const brandingImageAlt =
     authBranding?.imageAlt != null
-      ? getLocalizedValue(
-          authBranding.imageAlt,
-          localize('com_ui_logo', { 0: startupConfig?.appTitle ?? 'LibreChat' }),
-        )
-      : localize('com_ui_logo', { 0: startupConfig?.appTitle ?? 'LibreChat' });
+      ? getLocalizedValue(authBranding.imageAlt, defaultBrandingImageAlt)
+      : defaultBrandingImageAlt;
   const noticeText =
-    authBranding?.notice?.text != null ? getLocalizedValue(authBranding.notice.text, '') : null;
-  const loginExternalLinks = getInterfaceExternalLinks(startupConfig?.interface, 'login');
+    authBranding?.notice?.text != null
+      ? getLocalizedValue(authBranding.notice.text, defaultNoticeText)
+      : defaultNoticeText;
+  const configuredLoginExternalLinks = getInterfaceExternalLinks(startupConfig?.interface, 'login');
+  const loginExternalLinks =
+    configuredLoginExternalLinks.length > 0
+      ? configuredLoginExternalLinks
+      : defaultLoginExternalLinks;
   const brandingTitle =
     authBranding?.title != null
-      ? getLocalizedValue(
-          authBranding.title,
-          startupConfig?.appTitle ?? localize('com_auth_welcome_back'),
-        )
-      : localize('com_auth_welcome_back');
-  const hasBrandedResources = authBranding != null || loginExternalLinks.length > 0;
+      ? getLocalizedValue(authBranding.title, defaultBrandingTitle)
+      : defaultBrandingTitle;
+  const hasBrandedResources = true;
 
   if (shouldAutoRedirect) {
     return (
@@ -126,10 +153,10 @@ function Login() {
       <div className="w-full text-center">
         <h1 className="text-3xl font-semibold">{brandingTitle}</h1>
       </div>
-      {authBranding?.imageUrl != null && (
+      {brandingImageUrl != null && (
         <div className="w-full overflow-hidden rounded-md border border-gray-200 shadow-sm dark:border-gray-700">
           <img
-            src={authBranding.imageUrl}
+            src={brandingImageUrl}
             alt={brandingImageAlt}
             className="h-auto w-full object-contain"
           />
