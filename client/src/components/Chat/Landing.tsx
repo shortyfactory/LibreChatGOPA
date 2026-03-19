@@ -186,7 +186,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
             <SplitText
               key={`split-text-${greetingText}${user?.name ? '-user' : ''}`}
               text={greetingText}
-              className={`${getTextSizeClass(greetingText)} font-medium ${hasCustomWelcome ? 'text-amber-600 dark:text-amber-400' : 'text-text-primary'}`}
+              className={`${getTextSizeClass(greetingText)} font-medium ${hasCustomWelcome ? 'text-[#fcc200] dark:text-[#fcc200]' : 'text-text-primary'}`}
               delay={50}
               textAlign="center"
               animationFrom={{ opacity: 0, transform: 'translate3d(0,50px,0)' }}

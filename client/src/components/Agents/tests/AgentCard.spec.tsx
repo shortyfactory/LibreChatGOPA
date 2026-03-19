@@ -10,8 +10,6 @@ jest.mock('~/hooks/useLocalize', () => () => (key: string) => {
   const mockTranslations: Record<string, string> = {
     com_agents_created_by: 'Created by',
     com_agents_agent_card_label: '{{name}} agent. {{description}}',
-    com_agents_category_general: 'General',
-    com_agents_category_hr: 'Human Resources',
     com_ui_by_author: 'by {{0}}',
     com_agents_description_card: '{{description}}',
   };
@@ -24,8 +22,6 @@ jest.mock('~/hooks', () => ({
     const mockTranslations: Record<string, string> = {
       com_agents_created_by: 'Created by',
       com_agents_agent_card_label: '{{name}} agent. {{description}}',
-      com_agents_category_general: 'General',
-      com_agents_category_hr: 'Human Resources',
       com_ui_by_author: 'by {{0}}',
       com_agents_description_card: '{{description}}',
     };
@@ -45,8 +41,8 @@ jest.mock('~/hooks', () => ({
   },
   useAgentCategories: () => ({
     categories: [
-      { value: 'general', label: 'com_agents_category_general' },
-      { value: 'hr', label: 'com_agents_category_hr' },
+      { value: 'general_support', label: 'General Support' },
+      { value: 'hr_talent', label: 'HR & Talent' },
       { value: 'custom', label: 'Custom Category' }, // Non-localized custom category
     ],
   }),
@@ -72,12 +68,34 @@ jest.mock('~/Providers', () => ({
   })),
 }));
 
+type MockAvatar =
+  | string
+  | {
+      filepath: string;
+      source?: string;
+    };
+
+jest.mock('~/utils', () => ({
+  cn: (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' '),
+  getContactDisplayName: (agent: {
+    support_contact?: { name?: string | null } | null;
+    authorName?: string | null;
+  }) => agent.support_contact?.name || agent.authorName || '',
+  renderAgentAvatar: (agent: { name: string; avatar?: MockAvatar | null }) => {
+    if (!agent.avatar) {
+      return <svg className="lucide-feather" aria-hidden="true" />;
+    }
+
+    const src = typeof agent.avatar === 'string' ? agent.avatar : agent.avatar.filepath;
+    return <img src={src} alt={`${agent.name} avatar`} />;
+  },
+}));
+
 // Mock @librechat/client with proper Dialog behavior
 jest.mock('@librechat/client', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
   return {
-    ...jest.requireActual('@librechat/client'),
     useToastContext: jest.fn(() => ({
       showToast: jest.fn(),
     })),
@@ -326,7 +344,7 @@ describe('AgentCard', () => {
   it('displays localized category label', () => {
     const agentWithCategory = {
       ...mockAgent,
-      category: 'general',
+      category: 'general_support',
     };
 
     render(
@@ -335,7 +353,7 @@ describe('AgentCard', () => {
       </Wrapper>,
     );
 
-    expect(screen.getByText('General')).toBeInTheDocument();
+    expect(screen.getByText('General Support')).toBeInTheDocument();
   });
 
   it('displays custom category label', () => {
@@ -375,7 +393,7 @@ describe('AgentCard', () => {
       </Wrapper>,
     );
 
-    expect(screen.queryByText('General')).not.toBeInTheDocument();
+    expect(screen.queryByText('General Support')).not.toBeInTheDocument();
     expect(screen.queryByText('Unknown')).not.toBeInTheDocument();
   });
 

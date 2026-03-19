@@ -5,6 +5,7 @@ import type {
   PromptGroupListData,
   TPromptGroup,
 } from 'librechat-data-provider';
+import type { TranslationKeys } from '~/hooks/useLocalize';
 import {
   addData,
   deleteData,
@@ -15,6 +16,37 @@ import {
   removeFromCacheList,
   getRecordByProperty,
 } from './collection';
+
+export const promptCategoryLabelMap: Record<string, TranslationKeys> = {
+  idea: 'com_ui_idea',
+  travel: 'com_ui_travel',
+  teach_or_explain: 'com_ui_teach_or_explain',
+  write: 'com_ui_write',
+  shop: 'com_ui_shop',
+  code: 'com_ui_code',
+  misc: 'com_ui_misc',
+  roleplay: 'com_ui_roleplay',
+  finance: 'com_ui_finance',
+  writing_editing: 'com_ui_writing_editing',
+  translation_localization: 'com_ui_translation_localization',
+  meetings_summaries: 'com_ui_meetings_summaries',
+  research_analysis: 'com_ui_research_analysis',
+  brainstorming_ideation: 'com_ui_brainstorming_ideation',
+  formatting_structuring: 'com_ui_formatting_structuring',
+  general_support: 'com_ui_general_support',
+};
+
+export const getPromptCategoryLabel = (
+  category: string,
+  localize: (key: TranslationKeys) => string,
+) => {
+  if (!category) {
+    return '';
+  }
+
+  const translationKey = promptCategoryLabelMap[category];
+  return translationKey ? localize(translationKey) : category.replace(/_/g, ' ');
+};
 
 export const addPromptGroup = (
   data: InfiniteData<PromptGroupListResponse>,

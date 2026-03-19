@@ -101,7 +101,7 @@ const agentSchema = new Schema<IAgent>(
       type: String,
       trim: true,
       index: true,
-      default: 'general',
+      default: 'general_support',
     },
     support_contact: {
       type: Schema.Types.Mixed,

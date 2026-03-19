@@ -1,6 +1,79 @@
 import type { Model, Types } from 'mongoose';
 import type { IAgentCategory } from '~/types';
 
+const defaultCategories = [
+  {
+    value: 'general_support',
+    label: 'General Support',
+    description: 'Agents for broad support tasks, common requests, and everyday assistance.',
+    order: 0,
+  },
+  {
+    value: 'writing_communication',
+    label: 'Writing & Communication',
+    description: 'Agents for drafting, editing, messaging, and communication support.',
+    order: 1,
+  },
+  {
+    value: 'research_analysis',
+    label: 'Research & Analysis',
+    description: 'Agents for research, synthesis, due diligence, and analytical work.',
+    order: 2,
+  },
+  {
+    value: 'project_management',
+    label: 'Project Management',
+    description: 'Agents for planning, tracking, coordination, and delivery support.',
+    order: 3,
+  },
+  {
+    value: 'business_development',
+    label: 'Business Development',
+    description: 'Agents for pipeline support, proposals, partnerships, and growth activities.',
+    order: 4,
+  },
+  {
+    value: 'hr_talent',
+    label: 'HR & Talent',
+    description: 'Agents for recruitment, people operations, and talent-related processes.',
+    order: 5,
+  },
+  {
+    value: 'finance_administration',
+    label: 'Finance & Administration',
+    description: 'Agents for finance, operations, budgeting, and administrative support.',
+    order: 6,
+  },
+  {
+    value: 'it_digital_tools',
+    label: 'IT & Digital Tools',
+    description: 'Agents for IT support, digital tooling, workflows, and troubleshooting.',
+    order: 7,
+  },
+  {
+    value: 'knowledge_management',
+    label: 'Knowledge Management',
+    description: 'Agents for organizing, structuring, and maintaining institutional knowledge.',
+    order: 8,
+  },
+  {
+    value: 'translation_localization',
+    label: 'Translation & Localization',
+    description: 'Agents for multilingual work, translation, and localization tasks.',
+    order: 9,
+  },
+] as const;
+
+const legacyCategoryMappings: Record<string, string> = {
+  general: 'general_support',
+  hr: 'hr_talent',
+  rd: 'research_analysis',
+  finance: 'finance_administration',
+  it: 'it_digital_tools',
+  sales: 'business_development',
+  aftersales: 'project_management',
+};
+
 export function createAgentCategoryMethods(mongoose: typeof import('mongoose')) {
   /**
    * Get all active categories sorted by order
@@ -152,99 +225,123 @@ export function createAgentCategoryMethods(mongoose: typeof import('mongoose')) 
    */
   async function ensureDefaultCategories(): Promise<boolean> {
     const AgentCategory = mongoose.models.AgentCategory as Model<IAgentCategory>;
-
-    const defaultCategories = [
-      {
-        value: 'general',
-        label: 'com_agents_category_general',
-        description: 'com_agents_category_general_description',
-        order: 0,
-      },
-      {
-        value: 'hr',
-        label: 'com_agents_category_hr',
-        description: 'com_agents_category_hr_description',
-        order: 1,
-      },
-      {
-        value: 'rd',
-        label: 'com_agents_category_rd',
-        description: 'com_agents_category_rd_description',
-        order: 2,
-      },
-      {
-        value: 'finance',
-        label: 'com_agents_category_finance',
-        description: 'com_agents_category_finance_description',
-        order: 3,
-      },
-      {
-        value: 'it',
-        label: 'com_agents_category_it',
-        description: 'com_agents_category_it_description',
-        order: 4,
-      },
-      {
-        value: 'sales',
-        label: 'com_agents_category_sales',
-        description: 'com_agents_category_sales_description',
-        order: 5,
-      },
-      {
-        value: 'aftersales',
-        label: 'com_agents_category_aftersales',
-        description: 'com_agents_category_aftersales_description',
-        order: 6,
-      },
-    ];
+    const Agent = mongoose.models.Agent;
+    const defaultValueSet = new Set(defaultCategories.map((category) => category.value));
+    const defaultCategoryMap = new Map(
+      defaultCategories.map((category) => [category.value, category]),
+    );
 
     const existingCategories = await getAllCategories();
     const existingCategoryMap = new Map(existingCategories.map((cat) => [cat.value, cat]));
+    let changed = false;
 
-    const updates = [];
-    let created = 0;
+    for (const [legacyValue, nextValue] of Object.entries(legacyCategoryMappings)) {
+      const legacyCategory = existingCategoryMap.get(legacyValue);
+      if (!legacyCategory || legacyCategory.custom) {
+        continue;
+      }
 
-    for (const defaultCategory of defaultCategories) {
-      const existingCategory = existingCategoryMap.get(defaultCategory.value);
+      const nextCategory = defaultCategoryMap.get(nextValue);
+      if (!nextCategory) {
+        continue;
+      }
 
-      if (existingCategory) {
-        const isNotCustom = !existingCategory.custom;
-        const needsLocalization = !existingCategory.label.startsWith('com_');
+      await Agent.updateMany({ category: legacyValue }, { $set: { category: nextValue } });
 
-        if (isNotCustom && needsLocalization) {
-          updates.push({
-            value: defaultCategory.value,
-            label: defaultCategory.label,
-            description: defaultCategory.description,
-          });
-        }
+      if (!existingCategoryMap.has(nextValue)) {
+        await AgentCategory.updateOne(
+          { value: legacyValue, custom: { $ne: true } },
+          {
+            $set: {
+              value: nextCategory.value,
+              label: nextCategory.label,
+              description: nextCategory.description,
+              order: nextCategory.order,
+              isActive: true,
+            },
+          },
+        );
+        changed = true;
       } else {
-        await createCategory({
-          ...defaultCategory,
-          isActive: true,
-          custom: false,
-        });
-        created++;
+        if (legacyCategory.isActive !== false) {
+          await AgentCategory.updateOne(
+            { value: legacyValue, custom: { $ne: true } },
+            {
+              $set: {
+                isActive: false,
+              },
+            },
+          );
+          changed = true;
+        }
       }
     }
 
-    if (updates.length > 0) {
-      const bulkOps = updates.map((update) => ({
-        updateOne: {
-          filter: { value: update.value, custom: { $ne: true } },
-          update: {
-            $set: {
-              label: update.label,
-              description: update.description,
-            },
-          },
-        },
-      }));
+    const refreshedCategories = await getAllCategories();
+    const refreshedCategoryMap = new Map(refreshedCategories.map((cat) => [cat.value, cat]));
 
-      await AgentCategory.bulkWrite(bulkOps, { ordered: false });
+    for (const defaultCategory of defaultCategories) {
+      const existingCategory = refreshedCategoryMap.get(defaultCategory.value);
+
+      if (existingCategory) {
+        if (existingCategory.custom) {
+          continue;
+        }
+
+        const needsUpdate =
+          existingCategory.label !== defaultCategory.label ||
+          existingCategory.description !== defaultCategory.description ||
+          existingCategory.order !== defaultCategory.order ||
+          existingCategory.isActive !== true;
+
+        if (needsUpdate) {
+          await AgentCategory.updateOne(
+            { value: defaultCategory.value, custom: { $ne: true } },
+            {
+              $set: {
+                label: defaultCategory.label,
+                description: defaultCategory.description,
+                order: defaultCategory.order,
+                isActive: true,
+              },
+            },
+          );
+          changed = true;
+        }
+        continue;
+      }
+
+      await createCategory({
+        ...defaultCategory,
+        isActive: true,
+        custom: false,
+      });
+      changed = true;
     }
 
-    return updates.length > 0 || created > 0;
+    const categoriesToDeactivate = refreshedCategories.filter(
+      (category) =>
+        !category.custom && category.isActive !== false && !defaultValueSet.has(category.value),
+    );
+
+    if (categoriesToDeactivate.length > 0) {
+      await AgentCategory.bulkWrite(
+        categoriesToDeactivate.map((category) => ({
+          updateOne: {
+            filter: { value: category.value, custom: { $ne: true } },
+            update: {
+              $set: {
+                isActive: false,
+              },
+            },
+          },
+        })),
+        { ordered: false },
+      );
+      changed = true;
+    }
+
+    return changed;
   }
 
   return {

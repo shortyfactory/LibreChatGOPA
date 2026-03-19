@@ -19,10 +19,29 @@ const originalEnv = {
 process.env.CREDS_KEY = '0123456789abcdef0123456789abcdef';
 process.env.CREDS_IV = '0123456789abcdef';
 
-/** Skip tests if ANTHROPIC_API_KEY is not available */
-const SKIP_INTEGRATION_TESTS = !process.env.ANTHROPIC_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY?.trim();
+const ANTHROPIC_TEST_USER_KEY = process.env.ANTHROPIC_TEST_USER_KEY?.trim();
+const ANTHROPIC_REQUIRES_USER_KEY = ANTHROPIC_API_KEY === 'user_provided';
+const HAS_SERVER_ANTHROPIC_KEY = Boolean(ANTHROPIC_API_KEY && !ANTHROPIC_REQUIRES_USER_KEY);
+const USES_ANTHROPIC_VERTEX = process.env.ANTHROPIC_USE_VERTEX?.trim().toLowerCase() === 'true';
+const HAS_TEST_USER_ANTHROPIC_KEY = Boolean(ANTHROPIC_TEST_USER_KEY);
+const HAS_ANTHROPIC_TEST_CREDENTIALS =
+  USES_ANTHROPIC_VERTEX ||
+  HAS_SERVER_ANTHROPIC_KEY ||
+  (ANTHROPIC_REQUIRES_USER_KEY && HAS_TEST_USER_ANTHROPIC_KEY);
+
+/** Skip tests if Anthropic credentials are not available for the integration runtime */
+const SKIP_INTEGRATION_TESTS = !HAS_ANTHROPIC_TEST_CREDENTIALS;
 if (SKIP_INTEGRATION_TESTS) {
-  console.warn('ANTHROPIC_API_KEY not found - skipping integration tests');
+  let skipReason = 'Anthropic credentials are not configured for integration tests';
+
+  if (!ANTHROPIC_API_KEY) {
+    skipReason = 'ANTHROPIC_API_KEY not found';
+  } else if (ANTHROPIC_REQUIRES_USER_KEY) {
+    skipReason = 'ANTHROPIC_API_KEY=user_provided but ANTHROPIC_TEST_USER_KEY is not set';
+  }
+
+  console.warn(`${skipReason} - skipping integration tests`);
 }
 
 jest.mock('meilisearch', () => ({
@@ -79,7 +98,12 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { MongoMemoryServer } = require('mongodb-memory-server');
-const { hashToken, getRandomValues, createModels } = require('@librechat/data-schemas');
+const {
+  hashToken,
+  getRandomValues,
+  createModels,
+  createMethods,
+} = require('@librechat/data-schemas');
 const {
   SystemRoles,
   ResourceType,
@@ -344,7 +368,7 @@ async function createTestAgent(overrides = {}) {
         updatedAt: timestamp,
       },
     ],
-    category: 'general',
+    category: 'general_support',
   };
 
   return (await Agent.create(initialAgentData)).toObject();
@@ -397,6 +421,7 @@ describeWithApiKey('Open Responses API Integration Tests', () => {
 
     // Register all models
     const models = createModels(mongoose);
+    const methods = createMethods(mongoose);
 
     // Get models
     Agent = models.Agent;
@@ -422,6 +447,14 @@ describeWithApiKey('Open Responses API Integration Tests', () => {
       provider: 'local',
       role: SystemRoles.ADMIN,
     });
+
+    if (ANTHROPIC_REQUIRES_USER_KEY && HAS_TEST_USER_ANTHROPIC_KEY) {
+      await methods.updateUserKey({
+        userId: testUser._id.toString(),
+        name: EModelEndpoint.anthropic,
+        value: ANTHROPIC_TEST_USER_KEY,
+      });
+    }
 
     // Create REMOTE_AGENT access roles (if they don't exist)
     const existingRoles = await AccessRole.find({

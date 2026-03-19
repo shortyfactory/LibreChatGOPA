@@ -11,6 +11,13 @@ import {
   isAvatarUploadOnlyDirty,
 } from '../AgentPanel';
 
+jest.mock('@librechat/client', () => ({
+  Button: () => null,
+  useToastContext: () => ({
+    showToast: jest.fn(),
+  }),
+}));
+
 const createForm = (): AgentForm => ({
   agent: undefined,
   id: 'agent_123',
@@ -26,7 +33,7 @@ const createForm = (): AgentForm => ({
   end_after_tools: false,
   hide_sequential_outputs: false,
   recursion_limit: undefined,
-  category: 'general',
+  category: 'general_support',
   support_contact: undefined,
   artifacts: '',
   execute_code: false,

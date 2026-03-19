@@ -7,8 +7,9 @@ import { useFormContext, Controller } from 'react-hook-form';
 import type { MenuItemProps } from '@librechat/client';
 import type { ReactNode } from 'react';
 import { usePromptGroupsContext } from '~/Providers';
+import { cn, getPromptCategoryLabel } from '~/utils';
 import { useCategories } from '~/hooks';
-import { cn } from '~/utils';
+import CategoryIcon from './CategoryIcon';
 
 interface CategorySelectorProps {
   currentCategory?: string;
@@ -32,13 +33,33 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
   const setValue = formContext?.setValue;
 
   const watchedCategory = watch ? watch('category') : currentCategory;
+  const fallbackCategory = useMemo(() => {
+    const value = watchedCategory ?? currentCategory ?? '';
+
+    if (!value) {
+      return null;
+    }
+
+    const existingCategory = (categories ?? []).find((category) => category.value === value);
+    if (existingCategory) {
+      return null;
+    }
+
+    return {
+      value,
+      label: getPromptCategoryLabel(value, (key) => t(key)),
+      icon: <CategoryIcon category={value} className={className} />,
+    };
+  }, [watchedCategory, currentCategory, categories, t, className]);
 
   const categoryOption = useMemo(
     () =>
       (categories ?? []).find(
         (category) => category.value === (watchedCategory ?? currentCategory),
-      ) ?? emptyCategory,
-    [watchedCategory, categories, currentCategory, emptyCategory],
+      ) ??
+      fallbackCategory ??
+      emptyCategory,
+    [watchedCategory, categories, currentCategory, fallbackCategory, emptyCategory],
   );
 
   const displayCategory = useMemo(() => {

@@ -5,6 +5,10 @@ import '@testing-library/jest-dom';
 import CategoryTabs from '../CategoryTabs';
 import type t from 'librechat-data-provider';
 
+jest.mock('@librechat/client', () => ({
+  useMediaQuery: jest.fn(() => false),
+}));
+
 // Mock useLocalize hook
 jest.mock('~/hooks/useLocalize', () => () => (key: string) => {
   const mockTranslations: Record<string, string> = {
@@ -13,13 +17,6 @@ jest.mock('~/hooks/useLocalize', () => () => (key: string) => {
     com_agents_all_category: 'All',
     com_ui_no_categories: 'No categories available',
     com_agents_category_tabs_label: 'Agent Categories',
-    com_ui_agent_category_general: 'General',
-    com_ui_agent_category_hr: 'HR',
-    com_ui_agent_category_rd: 'R&D',
-    com_ui_agent_category_finance: 'Finance',
-    com_ui_agent_category_it: 'IT',
-    com_ui_agent_category_sales: 'Sales',
-    com_ui_agent_category_aftersales: 'After Sales',
   };
   return mockTranslations[key] || key;
 });
@@ -28,9 +25,19 @@ describe('CategoryTabs', () => {
   const mockCategories: t.TMarketplaceCategory[] = [
     { value: 'promoted', label: 'Top Picks', description: 'Our recommended agents', count: 5 },
     { value: 'all', label: 'All', description: 'All available agents', count: 20 },
-    { value: 'general', label: 'General', description: 'General purpose agents', count: 8 },
-    { value: 'hr', label: 'HR', description: 'HR agents', count: 3 },
-    { value: 'finance', label: 'Finance', description: 'Finance agents', count: 4 },
+    {
+      value: 'general_support',
+      label: 'General Support',
+      description: 'Agents for broad support tasks',
+      count: 8,
+    },
+    { value: 'hr_talent', label: 'HR & Talent', description: 'HR & Talent agents', count: 3 },
+    {
+      value: 'finance_administration',
+      label: 'Finance & Administration',
+      description: 'Finance & Administration agents',
+      count: 4,
+    },
   ];
 
   const mockOnChange = jest.fn();
@@ -53,9 +60,9 @@ describe('CategoryTabs', () => {
     // Check for provided categories
     expect(screen.getByText('Top Picks')).toBeInTheDocument();
     expect(screen.getByText('All')).toBeInTheDocument();
-    expect(screen.getByText('General')).toBeInTheDocument();
-    expect(screen.getByText('HR')).toBeInTheDocument();
-    expect(screen.getByText('Finance')).toBeInTheDocument();
+    expect(screen.getByText('General Support')).toBeInTheDocument();
+    expect(screen.getByText('HR & Talent')).toBeInTheDocument();
+    expect(screen.getByText('Finance & Administration')).toBeInTheDocument();
   });
 
   it('handles loading state properly', () => {
@@ -77,13 +84,13 @@ describe('CategoryTabs', () => {
     render(
       <CategoryTabs
         categories={mockCategories}
-        activeTab="general"
+        activeTab="general_support"
         isLoading={false}
         onChange={mockOnChange}
       />,
     );
 
-    const generalTab = screen.getByText('General').closest('button');
+    const generalTab = screen.getByText('General Support').closest('button');
     expect(generalTab).toHaveClass('bg-surface-hover');
 
     // Should have active underline
@@ -101,17 +108,17 @@ describe('CategoryTabs', () => {
       />,
     );
 
-    const hrTab = screen.getByText('HR');
+    const hrTab = screen.getByText('HR & Talent');
     await user.click(hrTab);
 
-    expect(mockOnChange).toHaveBeenCalledWith('hr');
+    expect(mockOnChange).toHaveBeenCalledWith('hr_talent');
   });
 
   it('handles promoted tab click correctly', async () => {
     render(
       <CategoryTabs
         categories={mockCategories}
-        activeTab="general"
+        activeTab="general_support"
         isLoading={false}
         onChange={mockOnChange}
       />,
@@ -149,7 +156,7 @@ describe('CategoryTabs', () => {
       />,
     );
 
-    const generalTab = screen.getByText('General').closest('button');
+    const generalTab = screen.getByText('General Support').closest('button');
     expect(generalTab).toHaveClass('bg-surface-secondary');
     expect(generalTab).toHaveClass('text-text-secondary');
 
@@ -186,14 +193,14 @@ describe('CategoryTabs', () => {
       />,
     );
 
-    const generalTab = screen.getByText('General').closest('button')!;
+    const generalTab = screen.getByText('General Support').closest('button')!;
 
     // Focus the button and click it
     generalTab.focus();
     expect(document.activeElement).toBe(generalTab);
 
     await user.click(generalTab);
-    expect(mockOnChange).toHaveBeenCalledWith('general');
+    expect(mockOnChange).toHaveBeenCalledWith('general_support');
   });
 
   it('shows empty state when categories prop is empty', () => {

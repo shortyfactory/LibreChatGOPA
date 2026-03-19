@@ -9,7 +9,10 @@ import {
   ControllerRenderProps,
 } from 'react-hook-form';
 import { TranslationKeys, useLocalize, useAgentCategories } from '~/hooks';
+import { getAgentCategoryFallbackLabel } from '~/constants/agentCategories';
 import { cn } from '~/utils';
+
+const DEFAULT_AGENT_CATEGORY = 'general_support';
 
 /**
  * Custom hook to handle category synchronization
@@ -23,7 +26,7 @@ const useCategorySync = (agent_id: string | null) => {
     ) => {
       // Only run once and only for new agents
       if (!handled && agent_id === '' && !field.value) {
-        field.onChange('general');
+        field.onChange(DEFAULT_AGENT_CATEGORY);
         setHandled(true);
       }
     },
@@ -56,9 +59,15 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
     value: category.value,
   }));
 
-  const getCategoryDisplayValue = (value: string) => {
-    const categoryItem = comboboxItems.find((c) => c.value === value);
-    return categoryItem?.label || comboboxItems.find((c) => c.value === 'general')?.label;
+  const getCategoryDisplayValue = (
+    value: string,
+    items: Array<{
+      label: string;
+      value: string;
+    }>,
+  ) => {
+    const categoryItem = items.find((c) => c.value === value);
+    return categoryItem?.label || items.find((c) => c.value === DEFAULT_AGENT_CATEGORY)?.label;
   };
 
   const searchPlaceholder = localize('com_ui_search_agent_category');
@@ -68,12 +77,21 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
     <Controller
       name="category"
       control={formContext.control}
-      defaultValue="general"
+      defaultValue={DEFAULT_AGENT_CATEGORY}
       render={({ field }) => {
         // Sync category if needed (without using useEffect in render)
         syncCategory(field);
 
-        const displayValue = getCategoryDisplayValue(field.value);
+        const fallbackCategory =
+          field.value && !comboboxItems.some((category) => category.value === field.value)
+            ? {
+                value: field.value,
+                label: getAgentCategoryFallbackLabel(field.value),
+              }
+            : null;
+
+        const items = fallbackCategory ? [...comboboxItems, fallbackCategory] : comboboxItems;
+        const displayValue = getCategoryDisplayValue(field.value, items);
 
         return (
           <ControlCombobox
@@ -83,7 +101,7 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
             setValue={(value) => {
               field.onChange(value);
             }}
-            items={comboboxItems}
+            items={items}
             className={cn(className)}
             ariaLabel={ariaLabel}
             isCollapsed={false}

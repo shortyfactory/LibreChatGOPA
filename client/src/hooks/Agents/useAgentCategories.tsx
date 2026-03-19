@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import useLocalize from '~/hooks/useLocalize';
+import type { TranslationKeys } from '~/hooks/useLocalize';
 import { useGetAgentCategoriesQuery } from '~/data-provider/Agents';
 import { EMPTY_AGENT_CATEGORY } from '~/constants/agentCategories';
 
@@ -40,7 +41,9 @@ const useAgentCategories = () => {
 
   const emptyCategory = useMemo(
     (): ProcessedAgentCategory => ({
-      label: localize(EMPTY_AGENT_CATEGORY.label),
+      label: EMPTY_AGENT_CATEGORY.label.startsWith('com_')
+        ? localize(EMPTY_AGENT_CATEGORY.label as TranslationKeys)
+        : EMPTY_AGENT_CATEGORY.label,
       value: EMPTY_AGENT_CATEGORY.value,
       className: 'w-full',
     }),

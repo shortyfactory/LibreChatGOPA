@@ -63,7 +63,7 @@ const createAgent = async (agentData) => {
         updatedAt: timestamp,
       },
     ],
-    category: agentData.category || 'general',
+    category: agentData.category || 'general_support',
     mcpServerNames: extractMCPServerNames(agentData.tools),
   };
 
