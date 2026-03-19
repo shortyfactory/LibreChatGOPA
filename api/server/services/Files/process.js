@@ -34,6 +34,7 @@ const { createFile, updateFileUsage, deleteFiles } = require('~/models');
 const { getFileStrategy } = require('~/server/utils/getFileStrategy');
 const { checkCapability } = require('~/server/services/Config');
 const { LB_QueueAsyncCall } = require('~/server/utils/queue');
+const { recordSidebarFileUpload } = require('~/server/services/FileRetentionStore');
 const { getStrategyFunctions } = require('./strategies');
 const { determineFileType } = require('~/server/utils');
 const { STTService } = require('./Audio/STTService');
@@ -59,6 +60,21 @@ const createSanitizedUploadWrapper = (uploadFunction) => {
 
     return uploadFunction({ req, file: sanitizedFile, file_id, ...restParams });
   };
+};
+
+const trackSidebarUpload = async ({ req, file }) => {
+  if (!file?.retentionEligible) {
+    return;
+  }
+
+  try {
+    await recordSidebarFileUpload({
+      userId: req.user.id,
+      uploadedAt: file.createdAt ?? new Date(),
+    });
+  } catch (error) {
+    logger.warn('[processFiles] Failed to update historical upload count', error);
+  }
 };
 
 /**
@@ -288,7 +304,7 @@ const processImageFile = async ({ req, res, metadata, returnFile = false }) => {
   const appConfig = req.config;
   const source = getFileStrategy(appConfig, { isImage: true });
   const { handleImageUpload } = getStrategyFunctions(source);
-  const { file_id, temp_file_id, endpoint } = metadata;
+  const { file_id, temp_file_id, endpoint, retentionEligible = false } = metadata;
 
   const { filepath, bytes, width, height } = await handleImageUpload({
     req,
@@ -308,11 +324,14 @@ const processImageFile = async ({ req, res, metadata, returnFile = false }) => {
       context: FileContext.message_attachment,
       source,
       type: `image/${appConfig.imageOutputType}`,
+      retentionEligible,
       width,
       height,
     },
     true,
   );
+
+  await trackSidebarUpload({ req, file: result });
 
   if (returnFile) {
     return result;
@@ -380,6 +399,8 @@ const uploadImageBuffer = async ({ req, context, metadata = {}, resize = true })
 const processFileUpload = async ({ req, res, metadata }) => {
   const appConfig = req.config;
   const isAssistantUpload = isAssistantsEndpoint(metadata.endpoint);
+  const isMessageFile = metadata.message_file === true || metadata.message_file === 'true';
+  const retentionEligible = !isAssistantUpload || isMessageFile;
   const assistantSource =
     metadata.endpoint === EModelEndpoint.azureAssistants ? FileSources.azure : FileSources.openai;
   // Use the configured file strategy for regular file uploads (not vectordb)
@@ -429,7 +450,7 @@ const processFileUpload = async ({ req, res, metadata }) => {
     const result = await processImageFile({
       req,
       file,
-      metadata: { file_id: v4() },
+      metadata: { file_id: v4(), retentionEligible },
       returnFile: true,
     });
     filepath = result.filepath;
@@ -448,11 +469,13 @@ const processFileUpload = async ({ req, res, metadata }) => {
       type: file.mimetype,
       embedded,
       source,
+      retentionEligible,
       height,
       width,
     },
     true,
   );
+  await trackSidebarUpload({ req, file: result });
   res.status(200).json({ message: 'File uploaded and processed successfully', ...result });
 };
 
@@ -542,6 +565,7 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
         filename: file.originalname,
         model: messageAttachment ? undefined : req.body.model,
         context: messageAttachment ? FileContext.message_attachment : FileContext.agents,
+        retentionEligible: messageAttachment,
       });
 
       if (!messageAttachment && tool_resource) {
@@ -553,6 +577,7 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
         });
       }
       const result = await createFile(fileInfo, true);
+      await trackSidebarUpload({ req, file: result });
       return res
         .status(200)
         .json({ message: 'Agent file uploaded and processed successfully', ...result });
@@ -697,7 +722,7 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
     const result = await processImageFile({
       req,
       file,
-      metadata: { file_id: v4() },
+      metadata: { file_id: v4(), retentionEligible: messageAttachment },
       returnFile: true,
     });
     filepath = result.filepath;
@@ -716,11 +741,13 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
     type: file.mimetype,
     embedded,
     source,
+    retentionEligible: messageAttachment,
     height,
     width,
   });
 
   const result = await createFile(fileInfo, true);
+  await trackSidebarUpload({ req, file: result });
 
   res.status(200).json({ message: 'Agent file uploaded and processed successfully', ...result });
 };

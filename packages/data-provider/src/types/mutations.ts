@@ -1,3 +1,4 @@
+import type { AxiosResponse } from 'axios';
 import * as types from '../types';
 import * as r from '../roles';
 import * as p from '../permissions';
@@ -420,3 +421,44 @@ export interface CancelMCPOAuthResponse {
   success: boolean;
   message: string;
 }
+
+export type AdminBanUserOptions = MutationOptions<
+  types.AdminBanUserResponse,
+  types.AdminBanUserRequest
+>;
+
+export type AdminUnbanUserOptions = MutationOptions<
+  types.AdminUnbanUserResponse,
+  types.AdminUnbanUserRequest
+>;
+
+export type AdminResetPasswordOptions = MutationOptions<
+  types.AdminResetPasswordResponse,
+  types.AdminResetPasswordRequest
+>;
+
+export type AdminDeleteUserOptions = MutationOptions<
+  types.AdminDeleteUserResponse,
+  types.AdminDeleteUserRequest
+>;
+
+export type AdminUpdateFileRetentionOptions = MutationOptions<
+  types.AdminFileRetentionUpdateResponse,
+  types.AdminFileRetentionUpdateInput
+>;
+
+export type AdminPurgeFileRetentionOptions = MutationOptions<
+  types.AdminFileRetentionPurgeResponse,
+  void
+>;
+
+export type DeepLUploadOptions = MutationOptions<types.DeepLUploadResponse, FormData>;
+
+export type DeepLStatusOptions = MutationOptions<
+  types.DeepLStatusResponse,
+  types.DeepLDocumentHandle
+>;
+
+export type DeepLDownloadOptions = MutationOptions<AxiosResponse<Blob>, types.DeepLDocumentHandle>;
+
+export type SDGMapOptions = MutationOptions<types.SDGMapResponse, FormData>;

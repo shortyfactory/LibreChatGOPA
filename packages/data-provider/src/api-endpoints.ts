@@ -1,4 +1,5 @@
 import type { AssistantsEndpoint } from './schemas';
+import type * as t from './types';
 import * as q from './types/queries';
 import { ResourceType } from './accessPermissions';
 
@@ -21,8 +22,8 @@ if (BASE_URL && BASE_URL.endsWith('/')) {
 export const apiBaseUrl = () => BASE_URL;
 
 // Testing this buildQuery function
-const buildQuery = (params: Record<string, unknown>): string => {
-  const query = Object.entries(params)
+const buildQuery = (params: object): string => {
+  const query = Object.entries(params as Record<string, unknown>)
     .filter(([, value]) => {
       if (Array.isArray(value)) {
         return value.length > 0;
@@ -47,6 +48,48 @@ export const balance = () => `${BASE_URL}/api/balance`;
 export const userPlugins = () => `${BASE_URL}/api/user/plugins`;
 
 export const deleteUser = () => `${BASE_URL}/api/user/delete`;
+
+const adminRoot = `${BASE_URL}/api/admin`;
+
+export const adminModeration = (params: t.AdminModerationQuery = {}) =>
+  `${adminRoot}/moderation${buildQuery(params)}`;
+
+export const adminUsers = (params: t.AdminUsersListQuery = {}) =>
+  `${adminRoot}/users${buildQuery(params)}`;
+
+export const adminUserBan = (userId: string) =>
+  `${adminRoot}/users/${encodeURIComponent(userId)}/ban`;
+
+export const adminUserUnban = (userId: string) =>
+  `${adminRoot}/users/${encodeURIComponent(userId)}/unban`;
+
+export const adminUserResetPassword = (userId: string) =>
+  `${adminRoot}/users/${encodeURIComponent(userId)}/reset-password`;
+
+export const adminUserDelete = (userId: string) =>
+  `${adminRoot}/users/${encodeURIComponent(userId)}`;
+
+export const adminAnalyticsUsers = (params: t.AdminAnalyticsUsersQuery = {}) =>
+  `${adminRoot}/analytics/users${buildQuery(params)}`;
+
+export const adminFileRetention = () => `${adminRoot}/analytics/file-retention`;
+
+export const adminFileRetentionPurge = () => `${adminRoot}/analytics/file-retention/purge`;
+
+export const adminDeepLJobs = (params: t.AdminDeepLJobsQuery = {}) =>
+  `${adminRoot}/analytics/deepl-jobs${buildQuery(params)}`;
+
+const deeplRoot = `${BASE_URL}/api/deepl`;
+
+export const deeplLanguages = () => `${deeplRoot}/languages`;
+
+export const deeplUpload = () => `${deeplRoot}/upload`;
+
+export const deeplStatus = () => `${deeplRoot}/status`;
+
+export const deeplDownload = () => `${deeplRoot}/download`;
+
+export const sdg = () => `${BASE_URL}/api/sdg`;
 
 const messagesRoot = `${BASE_URL}/api/messages`;
 

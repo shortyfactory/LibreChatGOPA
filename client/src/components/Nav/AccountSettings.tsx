@@ -5,19 +5,34 @@ import { LinkIcon, GearIcon, DropdownMenuSeparator, Avatar } from '@librechat/cl
 import { MyFilesModal } from '~/components/Chat/Input/Files/MyFilesModal';
 import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
-import { useLocalize } from '~/hooks';
+import { useLocalize, useLocalizedConfig } from '~/hooks';
+import { getInterfaceExternalLinks } from '~/utils/interfaceLinks';
 import Settings from './Settings';
 
 function AccountSettings() {
   const localize = useLocalize();
+  const getLocalizedValue = useLocalizedConfig();
   const { user, isAuthenticated, logout } = useAuthContext();
   const { data: startupConfig } = useGetStartupConfig();
   const balanceQuery = useGetUserBalance({
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
+  const accountExternalLinks = getInterfaceExternalLinks(
+    startupConfig?.interface,
+    'account',
+  ).filter(({ url }) => url !== startupConfig?.helpAndFaqURL);
   const [showSettings, setShowSettings] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const accountSettingsButtonRef = useRef<HTMLButtonElement>(null);
+
+  const handleOpenExternalLink = (url: string, openNewTab?: boolean) => {
+    if (openNewTab === false) {
+      window.location.href = url;
+      return;
+    }
+
+    window.open(url, '_blank');
+  };
 
   return (
     <Menu.MenuProvider>
@@ -63,15 +78,16 @@ function AccountSettings() {
           <FileText className="icon-md" aria-hidden="true" />
           {localize('com_nav_my_files')}
         </Menu.MenuItem>
-        {startupConfig?.helpAndFaqURL !== '/' && (
+        {accountExternalLinks.map((link) => (
           <Menu.MenuItem
-            onClick={() => window.open(startupConfig?.helpAndFaqURL, '_blank')}
+            key={`${link.url}-${getLocalizedValue(link.label, link.url)}`}
+            onClick={() => handleOpenExternalLink(link.url, link.openNewTab)}
             className="select-item text-sm"
           >
             <LinkIcon aria-hidden="true" />
-            {localize('com_nav_help_faq')}
+            {getLocalizedValue(link.label, link.url)}
           </Menu.MenuItem>
-        )}
+        ))}
         <Menu.MenuItem onClick={() => setShowSettings(true)} className="select-item text-sm">
           <GearIcon className="icon-md" aria-hidden="true" />
           {localize('com_nav_settings')}

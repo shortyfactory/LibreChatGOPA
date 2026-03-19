@@ -43,6 +43,10 @@ jest.mock('~/server/services/Tools/credentials', () => ({
   loadAuthValues: jest.fn(),
 }));
 
+jest.mock('~/server/services/FileRetentionStore', () => ({
+  recordSidebarFileUpload: jest.fn(),
+}));
+
 jest.mock('~/models', () => ({
   createFile: jest.fn().mockResolvedValue({ file_id: 'created-file-id' }),
   updateFileUsage: jest.fn(),
@@ -73,11 +77,20 @@ jest.mock('~/server/services/Files/Audio/STTService', () => ({
   STTService: { getInstance: jest.fn() },
 }));
 
-const { EToolResources, FileSources, AgentCapabilities } = require('librechat-data-provider');
+const {
+  EToolResources,
+  FileSources,
+  AgentCapabilities,
+  EModelEndpoint,
+  FileContext,
+} = require('librechat-data-provider');
 const { mergeFileConfig } = require('librechat-data-provider');
+const { createFile } = require('~/models');
 const { checkCapability } = require('~/server/services/Config');
+const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
-const { processAgentFileUpload } = require('./process');
+const { recordSidebarFileUpload } = require('~/server/services/FileRetentionStore');
+const { processAgentFileUpload, processFileUpload } = require('./process');
 
 const PDF_MIME = 'application/pdf';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -342,6 +355,133 @@ describe('processAgentFileUpload', () => {
       await expect(
         processAgentFileUpload({ req, res: mockRes, metadata: makeMetadata() }),
       ).resolves.not.toThrow();
+    });
+  });
+
+  describe('retention analytics', () => {
+    test('marks standard uploads as retentionEligible and records sidebar analytics', async () => {
+      const createdAt = new Date('2026-03-18T10:00:00.000Z');
+      createFile.mockImplementation(async (input) => ({
+        ...input,
+        createdAt,
+        retentionEligible: input.retentionEligible ?? false,
+      }));
+      getStrategyFunctions.mockReturnValue({
+        handleFileUpload: jest.fn().mockResolvedValue({
+          bytes: 42,
+          filename: 'upload.bin',
+          filepath: '/uploads/upload.bin',
+        }),
+      });
+      const req = makeReq({ mimetype: 'text/plain', ocrConfig: null });
+
+      await processFileUpload({
+        req,
+        res: mockRes,
+        metadata: {
+          endpoint: 'openAI',
+          file_id: 'file-uuid-123',
+        },
+      });
+
+      expect(createFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: FileContext.message_attachment,
+          retentionEligible: true,
+        }),
+        true,
+      );
+      expect(recordSidebarFileUpload).toHaveBeenCalledWith({
+        userId: 'user-123',
+        uploadedAt: createdAt,
+      });
+    });
+
+    test('does not record sidebar analytics for assistant tool uploads', async () => {
+      createFile.mockImplementation(async (input) => ({
+        ...input,
+        createdAt: new Date('2026-03-18T11:00:00.000Z'),
+        retentionEligible: input.retentionEligible ?? false,
+      }));
+      getOpenAIClient.mockResolvedValue({
+        openai: {
+          baseURL: 'https://api.openai.com/v1',
+          beta: {
+            assistants: {
+              files: {
+                create: jest.fn().mockResolvedValue({}),
+              },
+            },
+          },
+        },
+      });
+      getStrategyFunctions.mockReturnValue({
+        handleFileUpload: jest.fn().mockResolvedValue({
+          id: 'assistant-file-id',
+          bytes: 42,
+          filename: 'assistant.txt',
+          filepath: '/uploads/assistant.txt',
+        }),
+      });
+      const req = makeReq({ mimetype: 'text/plain', ocrConfig: null });
+
+      await processFileUpload({
+        req,
+        res: mockRes,
+        metadata: {
+          endpoint: EModelEndpoint.assistants,
+          assistant_id: 'asst_123',
+          tool_resource: EToolResources.context,
+          file_id: 'file-uuid-123',
+        },
+      });
+
+      expect(createFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: FileContext.assistants,
+          retentionEligible: false,
+        }),
+        true,
+      );
+      expect(recordSidebarFileUpload).not.toHaveBeenCalled();
+    });
+
+    test('records sidebar analytics for agent message attachments only', async () => {
+      const createdAt = new Date('2026-03-18T12:00:00.000Z');
+      createFile.mockImplementation(async (input) => ({
+        ...input,
+        createdAt,
+        retentionEligible: input.retentionEligible ?? false,
+      }));
+      getStrategyFunctions.mockReturnValue({
+        handleFileUpload: jest.fn().mockResolvedValue({
+          text: 'message attachment content',
+          bytes: 42,
+          filepath: 'doc://result',
+        }),
+      });
+      const req = makeReq({ mimetype: PDF_MIME, ocrConfig: null });
+
+      await processAgentFileUpload({
+        req,
+        res: mockRes,
+        metadata: {
+          ...makeMetadata(),
+          message_file: true,
+        },
+      });
+
+      expect(createFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: FileContext.message_attachment,
+          retentionEligible: true,
+        }),
+        true,
+      );
+      expect(recordSidebarFileUpload).toHaveBeenCalledWith({
+        userId: 'user-123',
+        uploadedAt: createdAt,
+      });
     });
   });
 });

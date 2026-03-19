@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const dbModels = require('~/db/models');
 const { createMethods } = require('@librechat/data-schemas');
 const methods = createMethods(mongoose);
 const { comparePassword } = require('./userMethods');
@@ -13,7 +14,7 @@ const {
 } = require('./Message');
 const { getConvoTitle, getConvo, saveConvo, deleteConvos } = require('./Conversation');
 const { getPreset, getPresets, savePreset, deletePresets } = require('./Preset');
-const { File } = require('~/db/models');
+const { File } = dbModels;
 
 const seedDatabase = async () => {
   await methods.initializeRoles();

@@ -6,6 +6,9 @@ import { createUserMethods, DEFAULT_SESSION_EXPIRY, type UserMethods } from './u
 export { DEFAULT_REFRESH_TOKEN_EXPIRY, DEFAULT_SESSION_EXPIRY };
 import { createKeyMethods, type KeyMethods } from './key';
 import { createFileMethods, type FileMethods } from './file';
+import { createDeepLJobMethods, type DeepLJobMethods } from './deeplJob';
+import { createFileRetentionMethods, type FileRetentionMethods } from './fileRetention';
+import { createFileUploadStatMethods, type FileUploadStatMethods } from './fileUploadStat';
 /* Memories */
 import { createMemoryMethods, type MemoryMethods } from './memory';
 /* Agent Categories */
@@ -29,6 +32,9 @@ export type AllMethods = UserMethods &
   RoleMethods &
   KeyMethods &
   FileMethods &
+  DeepLJobMethods &
+  FileRetentionMethods &
+  FileUploadStatMethods &
   MemoryMethods &
   AgentCategoryMethods &
   AgentApiKeyMethods &
@@ -52,6 +58,9 @@ export function createMethods(mongoose: typeof import('mongoose')): AllMethods {
     ...createRoleMethods(mongoose),
     ...createKeyMethods(mongoose),
     ...createFileMethods(mongoose),
+    ...createDeepLJobMethods(mongoose),
+    ...createFileRetentionMethods(mongoose),
+    ...createFileUploadStatMethods(mongoose),
     ...createMemoryMethods(mongoose),
     ...createAgentCategoryMethods(mongoose),
     ...createAgentApiKeyMethods(mongoose),
@@ -72,6 +81,9 @@ export type {
   RoleMethods,
   KeyMethods,
   FileMethods,
+  DeepLJobMethods,
+  FileRetentionMethods,
+  FileUploadStatMethods,
   MemoryMethods,
   AgentCategoryMethods,
   AgentApiKeyMethods,

@@ -1,0 +1,26 @@
+services:
+  api:
+    environment:
+      - SEARXNG_INSTANCE_URL=${SEARXNG_INSTANCE_URL:-http://searxng:8080}
+
+  searxng-redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - searxng-redis:/data
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: always
+    depends_on:
+      - searxng-redis
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080/
+      - SEARXNG_SECRET=${SEARXNG_SECRET}
+      - SEARXNG_REDIS_URL=redis://searxng-redis:6379/0
+      - SEARXNG_LIMITER=false
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+volumes:
+  searxng-redis:

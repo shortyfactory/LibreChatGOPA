@@ -11,7 +11,10 @@ import { createMCPServerModel } from './mcpServer';
 import { createRoleModel } from './role';
 import { createActionModel } from './action';
 import { createAssistantModel } from './assistant';
+import { createDeepLJobModel } from './deeplJob';
 import { createFileModel } from './file';
+import { createFileRetentionSettingsModel } from './fileRetention';
+import { createFileUploadStatsModel } from './fileUploadStat';
 import { createBannerModel } from './banner';
 import { createProjectModel } from './project';
 import { createKeyModel } from './key';
@@ -46,7 +49,10 @@ export function createModels(mongoose: typeof import('mongoose')) {
     Role: createRoleModel(mongoose),
     Action: createActionModel(mongoose),
     Assistant: createAssistantModel(mongoose),
+    DeepLJobAnalytics: createDeepLJobModel(mongoose),
     File: createFileModel(mongoose),
+    FileRetentionSettings: createFileRetentionSettingsModel(mongoose),
+    FileUploadStats: createFileUploadStatsModel(mongoose),
     Banner: createBannerModel(mongoose),
     Project: createProjectModel(mongoose),
     Key: createKeyModel(mongoose),

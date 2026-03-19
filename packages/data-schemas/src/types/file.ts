@@ -17,6 +17,7 @@ export interface IMongoFile extends Omit<Document, 'model'> {
   usage: number;
   source: string;
   model?: string;
+  retentionEligible?: boolean;
   width?: number;
   height?: number;
   metadata?: {

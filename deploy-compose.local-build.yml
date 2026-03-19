@@ -1,0 +1,7 @@
+services:
+  api:
+    image: librechatgopa-local-api
+    build:
+      context: .
+      dockerfile: Dockerfile.multi
+      target: api-build
