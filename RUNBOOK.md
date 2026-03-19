@@ -22,6 +22,8 @@ Toutes les commandes ci-dessous sont a executer depuis la racine du projet.
   Force Docker a builder l'image API locale a partir de ce repo.
 - `deploy-compose.local-auth.yml`
   Override local qui coupe OpenID et reactive le login LibreChat classique sur `localhost`.
+- `deploy-compose.local-hybrid-auth.yml`
+  Override local qui garde le login email/password tout en laissant OpenID actif sur `localhost`.
 - `deploy-compose.searxng.yml`
   Ajoute SearXNG et Redis, avec une URL interne par defaut `http://searxng:8080`.
 - `deploy-compose.prod-ssl.yml`
@@ -59,10 +61,33 @@ Build local de l'API + login email local:
 docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./deploy-compose.local-auth.yml up -d --build
 ```
 
+### Mode local hybride
+
+Build local de l'API + login email/password + OpenID:
+
+```powershell
+docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./deploy-compose.local-hybrid-auth.yml up -d --build
+```
+
+Avec ce mode:
+
+- l'application est servie sur `http://localhost`
+- le login email/password reste actif
+- le bouton OpenID reste visible pour tester Entra ID / Azure OpenID en local
+- les regles d'inscription continuent de venir de `.env` (`ALLOW_REGISTRATION`, `ALLOW_SOCIAL_REGISTRATION`)
+- il faut conserver des variables `OPENID_*` valides dans `.env`
+- l'application Entra ID doit autoriser l'URI de callback locale `http://localhost/oauth/openid/callback`
+
 ### Mode local avec SearXNG
 
 ```powershell
 docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./deploy-compose.local-auth.yml -f ./deploy-compose.searxng.yml up -d --build
+```
+
+### Mode local hybride avec SearXNG
+
+```powershell
+docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./deploy-compose.local-hybrid-auth.yml -f ./deploy-compose.searxng.yml up -d --build
 ```
 
 ### Start sans rebuild
@@ -138,6 +163,7 @@ docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./
 ## Notes Importantes
 
 - `deploy-compose.local-auth.yml` est reserve au local. Ne pas l'utiliser en production.
+- `deploy-compose.local-hybrid-auth.yml` est reserve au local. Ne pas l'utiliser en production.
 - `deploy-compose.local-build.yml` est necessaire si tu veux deployer ce fork plutot que l'image upstream.
 - `deploy-compose.prod-ssl.yml` ne fait que monter LetsEncrypt.
   Si tu utilises du HTTPS, il faut aussi adapter `client/nginx.conf` a ton domaine et a tes chemins de certificats.
