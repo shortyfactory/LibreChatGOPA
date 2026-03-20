@@ -4,8 +4,10 @@ const {
   EndpointURLs,
   EModelEndpoint,
   isAgentsEndpoint,
+  isAssistantsEndpoint,
   parseCompactConvo,
   getDefaultParamsEndpoint,
+  resolveAssistantsConfigEndpoint,
 } = require('librechat-data-provider');
 const azureAssistants = require('~/server/services/Endpoints/azureAssistants');
 const assistants = require('~/server/services/Endpoints/assistants');
@@ -29,7 +31,10 @@ async function buildEndpointOption(req, res, next) {
     logger.error('Error fetching endpoints config in buildEndpointOption', error);
   }
 
-  const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, endpoint);
+  const configEndpoint = isAssistantsEndpoint(endpoint)
+    ? resolveAssistantsConfigEndpoint(endpointType ?? endpoint)
+    : (endpointType ?? endpoint);
+  const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, configEndpoint);
 
   let parsedBody;
   try {
@@ -92,9 +97,15 @@ async function buildEndpointOption(req, res, next) {
   try {
     const isAgents =
       isAgentsEndpoint(endpoint) || req.baseUrl.startsWith(EndpointURLs[EModelEndpoint.agents]);
+    let builderKey = endpointType ?? endpoint;
+    if (isAgents) {
+      builderKey = EModelEndpoint.agents;
+    } else if (isAssistantsEndpoint(endpoint)) {
+      builderKey = resolveAssistantsConfigEndpoint(endpointType ?? endpoint);
+    }
     const builder = isAgents
       ? (...args) => buildFunction[EModelEndpoint.agents](req, ...args)
-      : buildFunction[endpointType ?? endpoint];
+      : buildFunction[builderKey];
 
     // TODO: use object params
     req.body = req.body || {}; // Express 5: ensure req.body exists

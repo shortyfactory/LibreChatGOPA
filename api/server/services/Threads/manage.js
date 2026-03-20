@@ -136,6 +136,7 @@ async function saveUserMessage(req, params) {
  * @param {string} [params.iconURL]
  * Overrides the instructions of the assistant.
  * @param {string} [params.promptPrefix] - Optional: from preset for `additional_instructions` field.
+ * @param {import('librechat-data-provider').TFile[]} [params.files] - Optional. Files generated or cited by the assistant.
  * @return {Promise<Run>} A promise that resolves to the created run object.
  */
 async function saveAssistantMessage(req, params) {
@@ -154,6 +155,7 @@ async function saveAssistantMessage(req, params) {
     sender: 'Assistant',
     isCreatedByUser: false,
     text: params.text,
+    files: params.files,
     unfinished: false,
     // tokenCount,
     iconURL: params.iconURL,

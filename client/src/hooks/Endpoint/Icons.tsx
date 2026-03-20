@@ -1,5 +1,9 @@
 import { Feather } from 'lucide-react';
-import { EModelEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from 'librechat-data-provider';
 import {
   GPTIcon,
   Sparkles,
@@ -66,6 +70,8 @@ export const icons: IconsRecord = {
   [EModelEndpoint.custom]: CustomMinimalIcon,
   [EModelEndpoint.assistants]: AssistantAvatar,
   [EModelEndpoint.azureAssistants]: AssistantAvatar,
+  [AzureAssistantsNewEndpoint]: AssistantAvatar,
+  [AzureAssistantsOldEndpoint]: AssistantAvatar,
   [EModelEndpoint.agents]: AgentAvatar,
   [EModelEndpoint.bedrock]: Bedrock,
   unknown: UnknownIcon,

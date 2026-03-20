@@ -9,6 +9,7 @@ import {
 } from 'librechat-data-provider';
 import type { Agent, TFile } from 'librechat-data-provider';
 import type { DropdownValueSetter, TAgentOption, ExtendedFile } from '~/common';
+import { renderAgentAvatar } from './agents';
 
 /**
  * Creates a Dropdown value setter that always passes a string value,
@@ -65,6 +66,12 @@ export const processAgentOption = ({
   fileMap?: Record<string, TFile | undefined>;
 }): TAgentOption => {
   const isGlobal = _agent?.isPublic ?? false;
+  let icon = null;
+  if (_agent?.avatar != null) {
+    icon = renderAgentAvatar(_agent, { size: 'icon', showBorder: false });
+  } else if (isGlobal) {
+    icon = <EarthIcon className="icon-md text-green-400" />;
+  }
 
   const context_files = _agent?.tool_resources?.context?.file_ids ?? [];
   if (_agent?.tool_resources?.ocr?.file_ids) {
@@ -76,7 +83,7 @@ export const processAgentOption = ({
     ...(_agent ?? ({} as Agent)),
     label: _agent?.name ?? '',
     value: _agent?.id ?? '',
-    icon: isGlobal ? <EarthIcon className="icon-md text-green-400" /> : null,
+    icon,
     context_files: context_files.length > 0 ? ([] as Array<[string, ExtendedFile]>) : undefined,
     knowledge_files: _agent?.tool_resources?.file_search?.file_ids
       ? ([] as Array<[string, ExtendedFile]>)

@@ -28,9 +28,15 @@ export function NoImage() {
 
 export const AgentAvatarRender = ({ url }: { url?: string }) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
   useEffect(() => {
     setIsLoaded(false);
+    setHasError(false);
   }, [url]);
+
+  if (hasError || !url) {
+    return <NoImage />;
+  }
 
   return (
     <div>
@@ -44,13 +50,18 @@ export const AgentAvatarRender = ({ url }: { url?: string }) => {
           loading="lazy"
           key={url || 'default-key'}
           onLoad={() => setIsLoaded(true)}
-          onError={() => setIsLoaded(false)}
+          onError={() => {
+            setIsLoaded(false);
+            setHasError(true);
+          }}
           style={{
             opacity: isLoaded ? 1 : 0,
             transition: 'opacity 0.2s ease-in-out',
           }}
         />
-        {!isLoaded && <Skeleton className="absolute inset-0 rounded-full" aria-hidden="true" />}
+        {!isLoaded && !hasError && (
+          <Skeleton className="absolute inset-0 rounded-full" aria-hidden="true" />
+        )}
       </div>
     </div>
   );

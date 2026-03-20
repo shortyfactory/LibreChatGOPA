@@ -82,8 +82,8 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
   const assistantMap = useAssistantsMapContext();
 
   const endpoint = useMemo(
-    () => conversation?.endpointType ?? conversation?.endpoint,
-    [conversation?.endpointType, conversation?.endpoint],
+    () => conversation?.endpoint ?? conversation?.endpointType,
+    [conversation?.endpoint, conversation?.endpointType],
   );
   const conversationId = useMemo(
     () => conversation?.conversationId ?? Constants.NEW_CONVO,

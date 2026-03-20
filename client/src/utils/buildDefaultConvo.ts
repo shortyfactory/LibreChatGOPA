@@ -1,9 +1,9 @@
 import {
   parseConvo,
-  EModelEndpoint,
   isAgentsEndpoint,
   isEphemeralAgentId,
   isAssistantsEndpoint,
+  resolveAssistantsConfigEndpoint,
 } from 'librechat-data-provider';
 import type { TConversation, EndpointSchemaKey } from 'librechat-data-provider';
 import { clearModelForNonEphemeralAgent } from './endpoints';
@@ -18,7 +18,7 @@ const buildDefaultConvo = ({
 }: {
   models: string[];
   conversation: TConversation;
-  endpoint?: EModelEndpoint | null;
+  endpoint?: string | null;
   lastConversationSetup: TConversation | null;
   defaultParamsEndpoint?: string | null;
 }): TConversation => {
@@ -44,9 +44,14 @@ const buildDefaultConvo = ({
     possibleModels = [...availableModels];
   }
 
+  const schemaEndpoint = resolveAssistantsConfigEndpoint(endpoint) as EndpointSchemaKey;
+  const schemaEndpointType = endpointType
+    ? (resolveAssistantsConfigEndpoint(endpointType) as EndpointSchemaKey)
+    : undefined;
+
   const convo = parseConvo({
-    endpoint: endpoint as EndpointSchemaKey,
-    endpointType: endpointType as EndpointSchemaKey,
+    endpoint: schemaEndpoint,
+    endpointType: schemaEndpointType,
     conversation: lastConversationSetup,
     possibleValues: {
       models: possibleModels,

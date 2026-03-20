@@ -6,6 +6,9 @@ import {
   EModelEndpoint,
   PermissionTypes,
   getEndpointField,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+  resolveAssistantsConfigEndpoint,
 } from 'librechat-data-provider';
 import type {
   TEndpointsConfig,
@@ -49,8 +52,12 @@ export const useEndpoints = ({
     [assistantsMap],
   );
 
-  const azureAssistants: Assistant[] = useMemo(
-    () => Object.values(assistantsMap?.[EModelEndpoint.azureAssistants] ?? {}),
+  const azureAssistantsNew: Assistant[] = useMemo(
+    () => Object.values(assistantsMap?.[AzureAssistantsNewEndpoint] ?? {}),
+    [assistantsMap],
+  );
+  const azureAssistantsOld: Assistant[] = useMemo(
+    () => Object.values(assistantsMap?.[AzureAssistantsOldEndpoint] ?? {}),
     [assistantsMap],
   );
 
@@ -74,13 +81,85 @@ export const useEndpoints = ({
 
   const endpointRequiresUserKey = useCallback(
     (ep: string) => {
-      return !!getEndpointField(endpointsConfig, ep, 'userProvide');
+      return !!getEndpointField(
+        endpointsConfig,
+        resolveAssistantsConfigEndpoint(ep),
+        'userProvide',
+      );
     },
     [endpointsConfig],
   );
 
   const mappedEndpoints: Endpoint[] = useMemo(() => {
-    return filteredEndpoints.map((ep) => {
+    const buildAssistantEndpoint = (value: string, label: string, list: Assistant[]): Endpoint => {
+      const endpointType = getEndpointField(
+        endpointsConfig,
+        EModelEndpoint.azureAssistants,
+        'type',
+      );
+      const iconKey = getIconKey({
+        endpoint: EModelEndpoint.azureAssistants,
+        endpointsConfig,
+        endpointType,
+      });
+      const Icon = icons[iconKey];
+      const endpointIconURL = getEndpointField(
+        endpointsConfig,
+        EModelEndpoint.azureAssistants,
+        'iconURL',
+      );
+
+      const result: Endpoint = {
+        value,
+        label,
+        hasModels: list.length > 0,
+        icon: Icon
+          ? React.createElement(Icon, {
+              size: 20,
+              className: 'text-text-primary shrink-0 icon-md',
+              iconURL: endpointIconURL,
+              endpoint: value,
+            })
+          : null,
+      };
+
+      if (list.length > 0) {
+        result.models = list.map((assistant) => ({
+          name: assistant.id,
+          isGlobal: false,
+        }));
+        result.assistantNames = list.reduce((acc: Record<string, string>, assistant: Assistant) => {
+          acc[assistant.id] = assistant.name || '';
+          return acc;
+        }, {});
+        result.modelIcons = list.reduce(
+          (acc: Record<string, string | undefined>, assistant: Assistant) => {
+            acc[assistant.id] = assistant.metadata?.avatar;
+            return acc;
+          },
+          {},
+        );
+      }
+
+      return result;
+    };
+
+    return filteredEndpoints.flatMap((ep) => {
+      if (ep === EModelEndpoint.azureAssistants) {
+        return [
+          buildAssistantEndpoint(
+            AzureAssistantsNewEndpoint,
+            alternateName[AzureAssistantsNewEndpoint] || AzureAssistantsNewEndpoint,
+            azureAssistantsNew,
+          ),
+          buildAssistantEndpoint(
+            AzureAssistantsOldEndpoint,
+            alternateName[AzureAssistantsOldEndpoint] || AzureAssistantsOldEndpoint,
+            azureAssistantsOld,
+          ),
+        ];
+      }
+
       const endpointType = getEndpointField(endpointsConfig, ep, 'type');
       const iconKey = getIconKey({ endpoint: ep, endpointsConfig, endpointType });
       const Icon = icons[iconKey];
@@ -90,9 +169,9 @@ export const useEndpoints = ({
         (ep === EModelEndpoint.assistants && assistants?.length > 0) ||
         (ep !== EModelEndpoint.assistants &&
           ep !== EModelEndpoint.agents &&
+          ep !== EModelEndpoint.azureAssistants &&
           (modelsQuery.data?.[ep]?.length ?? 0) > 0);
 
-      // Base result object with formatted default icon
       const result: Endpoint = {
         value: ep,
         label: alternateName[ep] || ep,
@@ -107,7 +186,6 @@ export const useEndpoints = ({
           : null,
       };
 
-      // Handle agents case
       if (ep === EModelEndpoint.agents && (agents?.length ?? 0) > 0) {
         result.models = agents?.map((agent) => ({
           name: agent.id,
@@ -121,10 +199,7 @@ export const useEndpoints = ({
           acc[agent.id] = agent?.avatar?.filepath;
           return acc;
         }, {});
-      }
-
-      // Handle assistants case
-      else if (ep === EModelEndpoint.assistants && assistants.length > 0) {
+      } else if (ep === EModelEndpoint.assistants && assistants.length > 0) {
         result.models = assistants.map((assistant: { id: string }) => ({
           name: assistant.id,
           isGlobal: false,
@@ -143,31 +218,10 @@ export const useEndpoints = ({
           },
           {},
         );
-      } else if (ep === EModelEndpoint.azureAssistants && azureAssistants.length > 0) {
-        result.models = azureAssistants.map((assistant: { id: string }) => ({
-          name: assistant.id,
-          isGlobal: false,
-        }));
-        result.assistantNames = azureAssistants.reduce(
-          (acc: Record<string, string>, assistant: Assistant) => {
-            acc[assistant.id] = assistant.name || '';
-            return acc;
-          },
-          {},
-        );
-        result.modelIcons = azureAssistants.reduce(
-          (acc: Record<string, string | undefined>, assistant: Assistant) => {
-            acc[assistant.id] = assistant.metadata?.avatar;
-            return acc;
-          },
-          {},
-        );
-      }
-
-      // For other endpoints with models from the modelsQuery
-      else if (
+      } else if (
         ep !== EModelEndpoint.agents &&
         ep !== EModelEndpoint.assistants &&
+        ep !== EModelEndpoint.azureAssistants &&
         (modelsQuery.data?.[ep]?.length ?? 0) > 0
       ) {
         result.models = modelsQuery.data?.[ep]?.map((model) => ({
@@ -176,9 +230,17 @@ export const useEndpoints = ({
         }));
       }
 
-      return result;
+      return [result];
     });
-  }, [filteredEndpoints, endpointsConfig, modelsQuery.data, agents, assistants, azureAssistants]);
+  }, [
+    filteredEndpoints,
+    endpointsConfig,
+    modelsQuery.data,
+    agents,
+    assistants,
+    azureAssistantsNew,
+    azureAssistantsOld,
+  ]);
 
   return {
     mappedEndpoints,

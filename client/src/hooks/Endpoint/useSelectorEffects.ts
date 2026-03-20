@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   isAgentsEndpoint,
   LocalStorageKeys,
@@ -60,7 +60,9 @@ export default function useSelectorEffects({
       return;
     }
     if (selectedAssistantId == null && assistants.length > 0) {
-      let assistant_id = localStorage.getItem(`${LocalStorageKeys.ASST_ID_PREFIX}${index}`);
+      let assistant_id =
+        localStorage.getItem(`${LocalStorageKeys.ASST_ID_PREFIX}${index}${endpoint}`) ??
+        localStorage.getItem(`${LocalStorageKeys.ASST_ID_PREFIX}${index}`);
       if (assistant_id == null) {
         assistant_id = assistants[0]?.id;
       }
@@ -74,15 +76,18 @@ export default function useSelectorEffects({
 
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const debouncedSetSelectedValues = (values: SelectedValues) => {
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
+  const debouncedSetSelectedValues = useCallback(
+    (values: SelectedValues) => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
 
-    debounceTimeoutRef.current = setTimeout(() => {
-      setSelectedValues(values);
-    }, 150);
-  };
+      debounceTimeoutRef.current = setTimeout(() => {
+        setSelectedValues(values);
+      }, 150);
+    },
+    [setSelectedValues],
+  );
 
   useEffect(() => {
     if (!conversation?.endpoint) {
@@ -126,5 +131,6 @@ export default function useSelectorEffects({
     conversation?.endpoint,
     conversation?.agent_id,
     conversation?.assistant_id,
+    debouncedSetSelectedValues,
   ]);
 }

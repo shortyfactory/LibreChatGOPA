@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
-import { EModelEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from 'librechat-data-provider';
 import type { AssistantListResponse, AssistantsEndpoint } from 'librechat-data-provider';
 import type { AssistantListItem } from '~/common';
 import { useListAssistantsQuery } from '~/data-provider';
@@ -32,13 +36,29 @@ export default function useAssistantListMap<T = AssistantListItem[] | null>(
       select: selector,
     },
   );
+  const { data: azureAssistantsNew = null } = useListAssistantsQuery(
+    AzureAssistantsNewEndpoint,
+    undefined,
+    {
+      select: selector,
+    },
+  );
+  const { data: azureAssistantsOld = null } = useListAssistantsQuery(
+    AzureAssistantsOldEndpoint,
+    undefined,
+    {
+      select: selector,
+    },
+  );
 
   const assistantListMap = useMemo(() => {
     return {
       [EModelEndpoint.assistants]: assistantsList as T,
       [EModelEndpoint.azureAssistants]: azureAssistants as T,
+      [AzureAssistantsNewEndpoint]: azureAssistantsNew as T,
+      [AzureAssistantsOldEndpoint]: azureAssistantsOld as T,
     };
-  }, [assistantsList, azureAssistants]);
+  }, [assistantsList, azureAssistants, azureAssistantsNew, azureAssistantsOld]);
 
   return assistantListMap;
 }

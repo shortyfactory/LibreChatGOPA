@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
-import { EModelEndpoint, alternateName, isAssistantsEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  alternateName,
+  isAssistantsEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from 'librechat-data-provider';
 import {
   useRevokeUserKeyMutation,
   useRevokeAllUserKeysMutation,
@@ -35,6 +41,8 @@ const endpointComponents = {
   [EModelEndpoint.azureOpenAI]: OpenAIConfig,
   [EModelEndpoint.assistants]: OpenAIConfig,
   [EModelEndpoint.azureAssistants]: OpenAIConfig,
+  [AzureAssistantsNewEndpoint]: OpenAIConfig,
+  [AzureAssistantsOldEndpoint]: OpenAIConfig,
   default: OtherConfig,
 };
 
@@ -44,6 +52,8 @@ const formSet: Set<string> = new Set([
   EModelEndpoint.azureOpenAI,
   EModelEndpoint.assistants,
   EModelEndpoint.azureAssistants,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
 ]);
 
 const EXPIRY = {

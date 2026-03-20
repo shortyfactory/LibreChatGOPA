@@ -1,9 +1,5 @@
-import type {
-  TPreset,
-  TConversation,
-  EModelEndpoint,
-  TEndpointsConfig,
-} from 'librechat-data-provider';
+import type { TPreset, TConversation, TEndpointsConfig } from 'librechat-data-provider';
+import { resolveAssistantsConfigEndpoint } from 'librechat-data-provider';
 import { getLocalStorageItems } from './localStorage';
 import { mapEndpoints } from './endpoints';
 
@@ -14,11 +10,13 @@ type TDefaultEndpoint = { convoSetup: TConvoSetup; endpointsConfig: TEndpointsCo
 const getEndpointFromSetup = (
   convoSetup: TConvoSetup | null,
   endpointsConfig: TEndpointsConfig,
-): EModelEndpoint | null => {
+): string | null => {
   let { endpoint: targetEndpoint = '' } = convoSetup || {};
   targetEndpoint = targetEndpoint ?? '';
-  if (targetEndpoint && endpointsConfig?.[targetEndpoint]) {
-    return targetEndpoint as EModelEndpoint;
+  const configEndpoint = resolveAssistantsConfigEndpoint(targetEndpoint);
+
+  if (targetEndpoint && endpointsConfig?.[configEndpoint] != null) {
+    return targetEndpoint;
   } else if (targetEndpoint) {
     console.warn(`Illegal target endpoint ${targetEndpoint}`, endpointsConfig);
   }
@@ -30,16 +28,13 @@ const getEndpointFromLocalStorage = (endpointsConfig: TEndpointsConfig) => {
     const { lastConversationSetup } = getLocalStorageItems();
     const { endpoint } = lastConversationSetup ?? { endpoint: null };
     const isDefaultConfig = Object.values(endpointsConfig ?? {}).every((value) => !value);
+    const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
 
     if (isDefaultConfig && endpoint) {
       return endpoint;
     }
 
-    if (isDefaultConfig && endpoint) {
-      return endpoint;
-    }
-
-    return endpoint && endpointsConfig?.[endpoint] != null ? endpoint : null;
+    return endpoint && endpointsConfig?.[configEndpoint] != null ? endpoint : null;
   } catch (error) {
     console.error(error);
     return null;
@@ -54,7 +49,7 @@ const getDefinedEndpoint = (endpointsConfig: TEndpointsConfig) => {
 const getDefaultEndpoint = ({
   convoSetup,
   endpointsConfig,
-}: TDefaultEndpoint): EModelEndpoint | undefined => {
+}: TDefaultEndpoint): string | undefined => {
   return (
     getEndpointFromSetup(convoSetup, endpointsConfig) ||
     getEndpointFromLocalStorage(endpointsConfig) ||

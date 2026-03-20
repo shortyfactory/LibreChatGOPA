@@ -2,7 +2,12 @@ const fs = require('fs').promises;
 const express = require('express');
 const { EnvVar } = require('@librechat/agents');
 const { logger } = require('@librechat/data-schemas');
-const { verifyAgentUploadPermission } = require('@librechat/api');
+const {
+  getFoundryFileInfo,
+  getFoundryFileArrayBuffer,
+  isFoundryAgentsConfigured,
+  verifyAgentUploadPermission,
+} = require('@librechat/api');
 const {
   Time,
   isUUID,
@@ -35,6 +40,47 @@ const { getLogStores } = require('~/cache');
 const { Readable } = require('stream');
 
 const router = express.Router();
+
+const setDownloadHeaders = ({ file, res, filename = file.filename, type = file.type }) => {
+  const cleanedFilename = cleanFileName(filename);
+  const metadata = {
+    ...file,
+    filename,
+    type: type ?? file.type,
+  };
+
+  res.setHeader('Content-Disposition', `attachment; filename="${cleanedFilename}"`);
+  res.setHeader('Content-Type', type ?? 'application/octet-stream');
+  res.setHeader('X-File-Metadata', JSON.stringify(metadata));
+};
+
+const tryFoundryFileDownload = async ({ file, file_id, res }) => {
+  if (file.source !== FileSources.azure || !isFoundryAgentsConfigured()) {
+    return false;
+  }
+
+  try {
+    const [foundryFileInfo, arrayBuffer] = await Promise.all([
+      getFoundryFileInfo(file_id),
+      getFoundryFileArrayBuffer(file_id),
+    ]);
+
+    setDownloadHeaders({
+      file,
+      res,
+      filename: foundryFileInfo?.filename ?? file.filename,
+      type: file.type,
+    });
+
+    Readable.from(Buffer.from(arrayBuffer)).pipe(res);
+    return true;
+  } catch (error) {
+    logger.warn(
+      `[DOWNLOAD ROUTE] Foundry download failed for ${file_id}, falling back to legacy Azure route: ${error.message}`,
+    );
+    return false;
+  }
+};
 
 router.get('/', async (req, res) => {
   try {
@@ -321,12 +367,9 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
       return res.status(501).send('Not Implemented');
     }
 
-    const setHeaders = () => {
-      const cleanedFilename = cleanFileName(file.filename);
-      res.setHeader('Content-Disposition', `attachment; filename="${cleanedFilename}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('X-File-Metadata', JSON.stringify(file));
-    };
+    if (await tryFoundryFileDownload({ file, file_id, res })) {
+      return;
+    }
 
     if (checkOpenAIStorage(file.source)) {
       req.body = { model: file.model };
@@ -341,7 +384,11 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
       });
       logger.debug(`Downloading file ${file_id} from OpenAI`);
       const passThrough = await getDownloadStream(file_id, openai);
-      setHeaders();
+      setDownloadHeaders({
+        file,
+        res,
+        type: 'application/octet-stream',
+      });
       logger.debug(`File ${file_id} downloaded from OpenAI`);
 
       // Handle both Node.js and Web streams
@@ -358,7 +405,11 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
         logger.error('[DOWNLOAD ROUTE] Stream error:', streamError);
       });
 
-      setHeaders();
+      setDownloadHeaders({
+        file,
+        res,
+        type: 'application/octet-stream',
+      });
       fileStream.pipe(res);
     }
   } catch (error) {

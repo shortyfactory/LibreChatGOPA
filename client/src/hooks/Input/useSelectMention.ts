@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
-import { EModelEndpoint, isAgentsEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  isAgentsEndpoint,
+  isAssistantsEndpoint,
+  isAzureAssistantsEndpoint,
+} from 'librechat-data-provider';
 import type {
   TPreset,
   TModelSpec,
@@ -16,6 +21,7 @@ import {
   getConvoSwitchLogic,
   logger,
 } from '~/utils';
+import { dispatchActivateAgentBuilder } from '~/utils/sidePanel';
 import { useDefaultConvo } from '~/hooks';
 import store from '~/store';
 
@@ -126,6 +132,7 @@ export default function useSelectMention({
     agent_id?: string;
     assistant_id?: string;
     spec?: string | null;
+    endpointType?: EModelEndpoint | string | null;
   };
 
   const onSelectEndpoint = useCallback(
@@ -164,13 +171,15 @@ export default function useSelectMention({
       if (agent_id) {
         template.agent_id = agent_id;
       }
+      const shouldActivateAgentBuilder = isAgentsEndpoint(newEndpoint) && !!agent_id;
       clearModelForNonEphemeralAgent(template);
 
       template.spec = null;
       template.iconURL = null;
       template.modelLabel = null;
+      const resolvedEndpointType = kwargs.endpointType ?? newEndpointType;
       if (isExistingConversation && isCurrentModular && isNewModular && shouldSwitch) {
-        template.endpointType = newEndpointType;
+        template.endpointType = resolvedEndpointType;
 
         const currentConvo = getDefaultConversation({
           /* target endpointType is necessary to avoid endpoint mixing */
@@ -196,15 +205,28 @@ export default function useSelectMention({
           keepLatestMessage: true,
           keepAddedConvos: true,
         });
+        if (shouldActivateAgentBuilder) {
+          dispatchActivateAgentBuilder();
+        }
         return;
       }
 
       logger.info('conversation', 'Switching conversation to new endpoint/model', template);
       newConversation({
         template: { ...(template as Partial<TConversation>) },
-        preset: { ...kwargs, spec: null, iconURL: null, modelLabel: null, endpoint: newEndpoint },
+        preset: {
+          ...kwargs,
+          spec: null,
+          iconURL: null,
+          modelLabel: null,
+          endpoint: newEndpoint,
+        },
         keepAddedConvos: isNewModular,
       });
+
+      if (shouldActivateAgentBuilder) {
+        dispatchActivateAgentBuilder();
+      }
     },
     [getConversation, getDefaultConversation, modularChat, newConversation, endpointsConfig],
   );
@@ -297,6 +319,9 @@ export default function useSelectMention({
         onSelectEndpoint(option.type, {
           assistant_id: key,
           model: assistantsMap?.[option.type]?.[key]?.model ?? '',
+          endpointType: isAzureAssistantsEndpoint(option.type)
+            ? EModelEndpoint.azureAssistants
+            : undefined,
         });
       } else if (isAgentsEndpoint(option.type)) {
         onSelectEndpoint(option.type, {

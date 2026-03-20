@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import type { ZodError } from 'zod';
 import type { TEndpointsConfig, TModelsConfig, TConfig } from './types';
-import { EModelEndpoint, eModelEndpointSchema, isAgentsEndpoint } from './schemas';
+import {
+  EModelEndpoint,
+  eModelEndpointSchema,
+  isAgentsEndpoint,
+  resolveAssistantsConfigEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from './schemas';
 import { specsConfigSchema, TSpecsConfig } from './models';
 import { fileConfigSchema } from './file-config';
 import { apiBaseUrl } from './api-endpoints';
@@ -192,6 +199,8 @@ export enum AgentCapabilities {
 export const defaultAssistantsVersion = {
   [EModelEndpoint.assistants]: 2,
   [EModelEndpoint.azureAssistants]: 1,
+  [AzureAssistantsNewEndpoint]: 1,
+  [AzureAssistantsOldEndpoint]: 1,
 };
 
 export const baseEndpointSchema = z.object({
@@ -1116,6 +1125,8 @@ export const alternateName = {
   [EModelEndpoint.assistants]: 'Assistants',
   [EModelEndpoint.agents]: 'My Agents',
   [EModelEndpoint.azureAssistants]: 'Azure Assistants',
+  [AzureAssistantsNewEndpoint]: 'Azure Assistants New',
+  [AzureAssistantsOldEndpoint]: 'Azure Assistants Old',
   [EModelEndpoint.azureOpenAI]: 'Azure OpenAI',
   [EModelEndpoint.google]: 'Google',
   [EModelEndpoint.anthropic]: 'Anthropic',
@@ -1272,6 +1283,8 @@ export const initialModelsConfig: TModelsConfig = {
 export const EndpointURLs = {
   [EModelEndpoint.assistants]: `${apiBaseUrl()}/api/assistants/v2/chat`,
   [EModelEndpoint.azureAssistants]: `${apiBaseUrl()}/api/assistants/v1/chat`,
+  [AzureAssistantsNewEndpoint]: `${apiBaseUrl()}/api/assistants/v1/chat`,
+  [AzureAssistantsOldEndpoint]: `${apiBaseUrl()}/api/assistants/v1/chat`,
   [EModelEndpoint.agents]: `${apiBaseUrl()}/api/${EModelEndpoint.agents}/chat`,
 } as const;
 
@@ -1292,6 +1305,8 @@ export const supportsBalanceCheck = {
   [EModelEndpoint.assistants]: true,
   [EModelEndpoint.agents]: true,
   [EModelEndpoint.azureAssistants]: true,
+  [AzureAssistantsNewEndpoint]: true,
+  [AzureAssistantsOldEndpoint]: true,
   [EModelEndpoint.azureOpenAI]: true,
   [EModelEndpoint.bedrock]: true,
   [EModelEndpoint.google]: true,
@@ -1952,7 +1967,8 @@ export function getEndpointField<
   if (!endpointsConfig || endpoint === null || endpoint === undefined) {
     return undefined;
   }
-  const config = endpointsConfig[endpoint];
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  const config = endpointsConfig[configEndpoint];
   if (!config) {
     return undefined;
   }
@@ -1999,5 +2015,6 @@ export function getDefaultParamsEndpoint(
   if (!endpointsConfig || !endpoint) {
     return undefined;
   }
-  return endpointsConfig[endpoint]?.customParams?.defaultParamsEndpoint;
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  return endpointsConfig[configEndpoint]?.customParams?.defaultParamsEndpoint;
 }

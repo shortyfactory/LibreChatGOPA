@@ -8,6 +8,7 @@ import {
   isParamEndpoint,
   isAgentsEndpoint,
   isAssistantsEndpoint,
+  isAzureAssistantsEndpoint,
 } from 'librechat-data-provider';
 import type { TInterfaceConfig, TEndpointsConfig } from 'librechat-data-provider';
 import MCPBuilderPanel from '~/components/SidePanel/MCPBuilder/MCPBuilderPanel';
@@ -77,7 +78,7 @@ export default function useSideNavLinks({
       ((endpoint === EModelEndpoint.assistants &&
         endpointsConfig?.[EModelEndpoint.assistants] &&
         endpointsConfig[EModelEndpoint.assistants].disableBuilder !== true) ||
-        (endpoint === EModelEndpoint.azureAssistants &&
+        (isAzureAssistantsEndpoint(endpoint) &&
           endpointsConfig?.[EModelEndpoint.azureAssistants] &&
           endpointsConfig[EModelEndpoint.azureAssistants].disableBuilder !== true)) &&
       keyProvided

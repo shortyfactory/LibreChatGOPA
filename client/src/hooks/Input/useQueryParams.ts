@@ -1,14 +1,9 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useSearchParams } from 'react-router-dom';
-import { QueryClient, useQueryClient } from '@tanstack/react-query';
-import { QueryKeys, EModelEndpoint, PermissionBits } from 'librechat-data-provider';
-import type {
-  AgentListResponse,
-  TEndpointsConfig,
-  TStartupConfig,
-  TPreset,
-} from 'librechat-data-provider';
+import { useQueryClient } from '@tanstack/react-query';
+import { EModelEndpoint } from 'librechat-data-provider';
+import type { TEndpointsConfig, TStartupConfig, TPreset } from 'librechat-data-provider';
 import {
   clearModelForNonEphemeralAgent,
   removeUnavailableTools,
@@ -18,25 +13,9 @@ import {
   getConvoSwitchLogic,
   logger,
 } from '~/utils';
-import { useAuthContext, useAgentsMap, useDefaultConvo, useSubmitMessage } from '~/hooks';
+import { useDefaultConvo, useSubmitMessage } from '~/hooks';
 import { useChatContext, useChatFormContext } from '~/Providers';
-import { useGetAgentByIdQuery } from '~/data-provider';
 import store from '~/store';
-
-const injectAgentIntoAgentsMap = (queryClient: QueryClient, agent: any) => {
-  const editCacheKey = [QueryKeys.agents, { requiredPermission: PermissionBits.EDIT }];
-  const editCache = queryClient.getQueryData<AgentListResponse>(editCacheKey);
-
-  if (editCache?.data && !editCache.data.some((cachedAgent) => cachedAgent.id === agent.id)) {
-    // Inject agent into EDIT cache so dropdown can display it
-    const updatedCache = {
-      ...editCache,
-      data: [agent, ...editCache.data],
-    };
-    queryClient.setQueryData(editCacheKey, updatedCache);
-    logger.log('agent', 'Injected URL agent into cache:', agent);
-  }
-};
 
 /**
  * Hook that processes URL query parameters to initialize chat with specified settings and prompt.
@@ -68,9 +47,6 @@ export default function useQueryParams({
 
   const queryClient = useQueryClient();
   const { conversation, newConversation } = useChatContext();
-
-  const urlAgentId = searchParams.get('agent_id') || '';
-  const { data: urlAgent } = useGetAgentByIdQuery(urlAgentId);
 
   /**
    * Applies settings from URL query parameters to create a new conversation.
@@ -377,12 +353,4 @@ export default function useQueryParams({
       }
     }
   }, [conversation, processSubmission, areSettingsApplied]);
-
-  const { isAuthenticated } = useAuthContext();
-  const agentsMap = useAgentsMap({ isAuthenticated });
-  useEffect(() => {
-    if (urlAgent) {
-      injectAgentIntoAgentsMap(queryClient, urlAgent);
-    }
-  }, [urlAgent, queryClient, agentsMap]);
 }

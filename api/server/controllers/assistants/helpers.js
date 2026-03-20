@@ -3,12 +3,19 @@ const {
   EModelEndpoint,
   defaultOrderQuery,
   defaultAssistantsVersion,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+  resolveAssistantsConfigEndpoint,
 } = require('librechat-data-provider');
+const { isFoundryAgentsConfigured, listFoundryAgents } = require('@librechat/api');
 const {
   initializeClient: initAzureClient,
 } = require('~/server/services/Endpoints/azureAssistants');
 const { initializeClient } = require('~/server/services/Endpoints/assistants');
 const { getEndpointsConfig } = require('~/server/services/Config');
+
+const isLegacyAzureAssistantsEndpoint = (endpoint) =>
+  endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
 
 /**
  * @param {ServerRequest} req
@@ -23,7 +30,12 @@ const getCurrentVersion = async (req, endpoint) => {
   }
   if (!version && endpoint) {
     const endpointsConfig = await getEndpointsConfig(req);
-    version = `v${endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint]}`;
+    const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+    version = `v${
+      endpointsConfig?.[configEndpoint]?.version ??
+      defaultAssistantsVersion[endpoint] ??
+      defaultAssistantsVersion[configEndpoint]
+    }`;
   }
   if (!version?.startsWith('v') && version.length !== 2) {
     throw new Error(`[${req.baseUrl}] Invalid version: ${version}`);
@@ -194,7 +206,7 @@ async function getOpenAIClient({ req, res, endpointOption, initAppClient, overri
   let result;
   if (endpoint === EModelEndpoint.assistants) {
     result = await initializeClient({ req, res, version, endpointOption, initAppClient });
-  } else if (endpoint === EModelEndpoint.azureAssistants) {
+  } else if (isLegacyAzureAssistantsEndpoint(endpoint)) {
     result = await initAzureClient({ req, res, version, endpointOption, initAppClient });
   }
 
@@ -231,21 +243,29 @@ const fetchAssistants = async ({ req, res, overrideEndpoint }) => {
 
   if (endpoint === EModelEndpoint.assistants) {
     ({ body } = await listAllAssistants({ req, res, version, query }));
-  } else if (endpoint === EModelEndpoint.azureAssistants) {
+  } else if (endpoint === AzureAssistantsNewEndpoint) {
+    body = await listFoundryAgents(query);
+  } else if (endpoint === EModelEndpoint.azureAssistants && isFoundryAgentsConfigured()) {
+    body = await listFoundryAgents(query);
+  } else if (isLegacyAzureAssistantsEndpoint(endpoint)) {
     const azureConfig = appConfig.endpoints?.[EModelEndpoint.azureOpenAI];
     body = await listAssistantsForAzure({ req, res, version, azureConfig, query });
   }
 
   if (req.user.role === SystemRoles.ADMIN) {
     return body;
-  } else if (!appConfig.endpoints?.[endpoint]) {
+  }
+
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+
+  if (!appConfig.endpoints?.[configEndpoint]) {
     return body;
   }
 
   body.data = filterAssistants({
     userId: req.user.id,
     assistants: body.data,
-    assistantsConfig: appConfig.endpoints?.[endpoint],
+    assistantsConfig: appConfig.endpoints?.[configEndpoint],
   });
   return body;
 };

@@ -27,16 +27,24 @@ const LazyAgentAvatar = ({
   url,
   alt,
   imgClass,
+  fallback,
 }: {
   url: string;
   alt: string;
   imgClass: string;
+  fallback: React.ReactNode;
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     setIsLoaded(false);
+    setHasError(false);
   }, [url]);
+
+  if (hasError) {
+    return <>{fallback}</>;
+  }
 
   return (
     <>
@@ -46,13 +54,18 @@ const LazyAgentAvatar = ({
         className={imgClass}
         loading="lazy"
         onLoad={() => setIsLoaded(true)}
-        onError={() => setIsLoaded(false)}
+        onError={() => {
+          setIsLoaded(false);
+          setHasError(true);
+        }}
         style={{
           opacity: isLoaded ? 1 : 0,
           transition: 'opacity 0.2s ease-in-out',
         }}
       />
-      {!isLoaded && <Skeleton className="absolute inset-0 rounded-full" aria-hidden="true" />}
+      {!isLoaded && !hasError && (
+        <Skeleton className="absolute inset-0 rounded-full" aria-hidden="true" />
+      )}
     </>
   );
 };
@@ -90,14 +103,6 @@ export const renderAgentAvatar = (
     xl: 'h-10 w-10',
   };
 
-  const placeholderSizeClasses = {
-    icon: 'h-5 w-5',
-    sm: 'h-10 w-10 sm:h-12 sm:w-12',
-    md: 'h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20',
-    lg: 'h-16 w-16 sm:h-20 sm:w-20 md:h-24 md:w-24',
-    xl: 'h-20 w-20',
-  };
-
   const borderClasses = showBorder ? 'border-1 border-border-medium' : '';
 
   if (avatarUrl) {
@@ -109,6 +114,9 @@ export const renderAgentAvatar = (
           url={avatarUrl}
           alt={`${agent?.name || 'Agent'} avatar`}
           imgClass={`${sizeClasses[size]} rounded-full object-cover shadow-lg ${borderClasses}`}
+          fallback={
+            <Feather className={`text-text-primary ${iconSizeClasses[size]}`} strokeWidth={1.5} />
+          }
         />
       </div>
     );

@@ -1,6 +1,11 @@
 import debounce from 'lodash/debounce';
 import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
-import { EModelEndpoint, isAgentsEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  isAgentsEndpoint,
+  isAssistantsEndpoint,
+  isAzureAssistantsEndpoint,
+} from 'librechat-data-provider';
 import type * as t from 'librechat-data-provider';
 import type { Endpoint, SelectedValues } from '~/common';
 import {
@@ -200,7 +205,11 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     (endpoint: Endpoint) => {
       if (!endpoint.hasModels) {
         if (endpoint.value) {
-          onSelectEndpoint?.(endpoint.value);
+          onSelectEndpoint?.(endpoint.value, {
+            endpointType: isAzureAssistantsEndpoint(endpoint.value)
+              ? EModelEndpoint.azureAssistants
+              : undefined,
+          });
         }
         setSelectedValues({
           endpoint: endpoint.value,
@@ -223,6 +232,9 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
         onSelectEndpoint?.(endpoint.value, {
           assistant_id: model,
           model: assistantsMap?.[endpoint.value]?.[model]?.model ?? '',
+          endpointType: isAzureAssistantsEndpoint(endpoint.value)
+            ? EModelEndpoint.azureAssistants
+            : undefined,
         });
       } else if (endpoint.value) {
         onSelectEndpoint?.(endpoint.value, { model });

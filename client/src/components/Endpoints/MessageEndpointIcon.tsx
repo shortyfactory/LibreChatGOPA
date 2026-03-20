@@ -1,6 +1,12 @@
 import { memo } from 'react';
 import { Feather } from 'lucide-react';
-import { EModelEndpoint, isAssistantsEndpoint, alternateName } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  isAssistantsEndpoint,
+  alternateName,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from 'librechat-data-provider';
 import {
   Plugin,
   GPTIcon,
@@ -123,6 +129,8 @@ const MessageEndpointIcon: React.FC<IconProps> = (props) => {
     [EModelEndpoint.assistants]: assistantsIcon,
     [EModelEndpoint.agents]: agentsIcon,
     [EModelEndpoint.azureAssistants]: assistantsIcon,
+    [AzureAssistantsNewEndpoint]: assistantsIcon,
+    [AzureAssistantsOldEndpoint]: assistantsIcon,
     [EModelEndpoint.azureOpenAI]: {
       icon: <AzureMinimalIcon size={size * 0.5555555555555556} />,
       bg: 'linear-gradient(0.375turn, #61bde2, #4389d0)',

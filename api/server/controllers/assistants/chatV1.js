@@ -1,7 +1,16 @@
 const { v4 } = require('uuid');
 const { sleep } = require('@librechat/agents');
 const { logger } = require('@librechat/data-schemas');
-const { sendEvent, getBalanceConfig, getModelMaxTokens, countTokens } = require('@librechat/api');
+const {
+  sendEvent,
+  countTokens,
+  chatWithFoundryAgent,
+  getFoundryFileInfo,
+  getFoundryFileArrayBuffer,
+  getBalanceConfig,
+  getModelMaxTokens,
+  isFoundryAgentsConfigured,
+} = require('@librechat/api');
 const {
   Time,
   Constants,
@@ -12,12 +21,15 @@ const {
   EModelEndpoint,
   ViolationTypes,
   ImageVisionTool,
+  AzureAssistantsOldEndpoint,
+  AzureAssistantsNewEndpoint,
   checkOpenAIStorage,
   AssistantStreamEvents,
 } = require('librechat-data-provider');
 const {
   initThread,
   recordUsage,
+  processMessages,
   saveUserMessage,
   checkMessageGaps,
   addThreadMetadata,
@@ -36,6 +48,308 @@ const { checkBalance } = require('~/models/balanceMethods');
 const { getConvo } = require('~/models/Conversation');
 const getLogStores = require('~/cache/getLogStores');
 const { getOpenAIClient } = require('./helpers');
+
+const isLegacyAzureAssistantsEndpoint = (endpoint) =>
+  endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
+
+const checkBalanceBeforeAssistantRun = async ({
+  req,
+  res,
+  text,
+  model,
+  appConfig,
+  promptPrefix,
+  conversationId,
+  parentMessageId,
+  threadId,
+}) => {
+  const balanceConfig = getBalanceConfig(appConfig);
+  if (!balanceConfig?.enabled) {
+    return;
+  }
+
+  const transactions =
+    (await getTransactions({
+      user: req.user.id,
+      context: 'message',
+      conversationId,
+    })) ?? [];
+
+  const totalPreviousTokens = Math.abs(transactions.reduce((acc, curr) => acc + curr.rawAmount, 0));
+
+  const promptBuffer = parentMessageId === Constants.NO_PARENT && !threadId ? 200 : 0;
+  let promptTokens = (await countTokens(text + (promptPrefix ?? ''))) + 5;
+  promptTokens += totalPreviousTokens + promptBuffer;
+  promptTokens = Math.min(promptTokens, getModelMaxTokens(model));
+
+  await checkBalance({
+    req,
+    res,
+    txData: {
+      model,
+      user: req.user.id,
+      tokenType: 'prompt',
+      amount: promptTokens,
+    },
+  });
+};
+
+const buildFoundryAssistantContent = (text) => [
+  {
+    type: ContentTypes.TEXT,
+    text: {
+      value: text,
+    },
+  },
+];
+
+const createFoundryRequestBody = ({ req, model, endpoint }) => ({
+  ...(req.body ?? {}),
+  endpoint,
+  model,
+});
+
+const createFoundryMessageProcessorClient = ({ req, model, endpoint }) => ({
+  baseURL: '',
+  req: {
+    ...req,
+    body: createFoundryRequestBody({ req, model, endpoint }),
+  },
+  attachedFileIds: new Set(),
+  processedFileIds: new Set(),
+  files: {
+    retrieve: async (file_id) => {
+      const file = await getFoundryFileInfo(file_id);
+      return {
+        id: file.id,
+        object: file.object,
+        bytes: file.bytes,
+        filename: file.filename,
+        purpose: file.purpose,
+      };
+    },
+    content: async (file_id) => ({
+      arrayBuffer: async () => getFoundryFileArrayBuffer(file_id),
+    }),
+  },
+});
+
+const getUniqueFoundryMessageFiles = (messages = []) => {
+  const files = new Map();
+
+  for (const message of messages) {
+    for (const file of message.files ?? []) {
+      if (!file?.file_id || files.has(file.file_id)) {
+        continue;
+      }
+
+      files.set(file.file_id, file);
+    }
+  }
+
+  return Array.from(files.values());
+};
+
+const processFoundryAssistantMessages = async ({ req, endpoint, model, messages }) => {
+  const client = createFoundryMessageProcessorClient({ req, model, endpoint });
+  const result = await processMessages({
+    messages,
+    openai: client,
+    client,
+  });
+
+  return {
+    files: getUniqueFoundryMessageFiles(result.messages),
+    text: result.text,
+  };
+};
+
+const chatWithFoundryAssistantV1 = async ({
+  req,
+  res,
+  text,
+  model,
+  files,
+  promptPrefix,
+  endpoint,
+  assistant_id,
+  instructions,
+  endpointOption,
+  thread_id: initialThreadId,
+  conversationId: initialConversationId,
+  parentMessageId: initialParentMessageId,
+  clientTimestamp,
+}) => {
+  if (initialConversationId && !initialThreadId) {
+    throw new Error('Missing thread_id for existing conversation');
+  }
+
+  if (!assistant_id) {
+    throw new Error('Missing assistant_id');
+  }
+
+  if (files.length || endpointOption?.attachments?.length) {
+    throw new Error('Foundry Agents MVP does not support file attachments yet.');
+  }
+
+  const conversationId = initialConversationId ?? v4();
+  const parentMessageId = initialParentMessageId ?? Constants.NO_PARENT;
+  const userMessageId = v4();
+  const responseMessageId = v4();
+
+  await checkBalanceBeforeAssistantRun({
+    req,
+    res,
+    text,
+    model,
+    appConfig: req.config,
+    promptPrefix,
+    conversationId,
+    parentMessageId,
+    threadId: initialThreadId,
+  });
+
+  const runBody = createRunBody({
+    model,
+    assistant_id,
+    promptPrefix,
+    instructions,
+    endpointOption,
+    clientTimestamp,
+  });
+
+  const result = await chatWithFoundryAgent({
+    text,
+    assistantId: assistant_id,
+    threadId: initialThreadId,
+    instructions: runBody.instructions,
+    attachments: files.map(({ file_id }) => ({ file_id })),
+    additionalInstructions: runBody.additional_instructions,
+  });
+
+  const requestMessage = {
+    user: req.user.id,
+    text,
+    messageId: userMessageId,
+    parentMessageId,
+    conversationId,
+    isCreatedByUser: true,
+    assistant_id,
+    thread_id: result.threadId,
+    model: assistant_id,
+    endpoint,
+  };
+
+  const conversation = {
+    endpoint,
+    assistant_id,
+    instructions,
+    promptPrefix,
+    conversationId,
+  };
+
+  const saveUserPromise = saveUserMessage(req, {
+    ...requestMessage,
+    model: result.model ?? model,
+  });
+
+  let assistantResponseText = result.responseText;
+  let assistantResponseFiles = [];
+
+  try {
+    const processedResponse = await processFoundryAssistantMessages({
+      req,
+      model: result.model ?? model,
+      endpoint,
+      messages: result.responseMessages,
+    });
+
+    if (processedResponse.text.trim()) {
+      assistantResponseText = processedResponse.text;
+    }
+
+    assistantResponseFiles = processedResponse.files;
+  } catch (error) {
+    logger.error('[/assistants/chat/] Error processing Foundry assistant files', error);
+  }
+
+  sendEvent(res, {
+    sync: true,
+    conversationId,
+    requestMessage,
+    responseMessage: {
+      user: req.user.id,
+      messageId: responseMessageId,
+      parentMessageId: userMessageId,
+      conversationId,
+      assistant_id,
+      thread_id: result.threadId,
+      model: assistant_id,
+    },
+  });
+
+  sendEvent(res, {
+    index: 0,
+    type: ContentTypes.TEXT,
+    messageId: responseMessageId,
+    thread_id: result.threadId,
+    conversationId,
+    text: {
+      value: assistantResponseText,
+    },
+  });
+
+  sendEvent(res, {
+    final: true,
+    conversation,
+    requestMessage: {
+      parentMessageId,
+      thread_id: result.threadId,
+    },
+  });
+  res.end();
+
+  try {
+    await saveUserPromise;
+    await saveAssistantMessage(req, {
+      user: req.user.id,
+      endpoint,
+      assistant_id,
+      conversationId,
+      thread_id: result.threadId,
+      messageId: responseMessageId,
+      parentMessageId: userMessageId,
+      model: result.model ?? model,
+      text: assistantResponseText,
+      spec: endpointOption?.spec,
+      iconURL: endpointOption?.iconURL,
+      instructions,
+      promptPrefix,
+      content: buildFoundryAssistantContent(assistantResponseText),
+      files: assistantResponseFiles,
+    });
+
+    if (parentMessageId === Constants.NO_PARENT && !initialThreadId) {
+      addTitle(req, {
+        text,
+        conversationId,
+        responseText: assistantResponseText,
+      });
+    }
+
+    if (result.usage) {
+      await recordUsage({
+        user: req.user.id,
+        conversationId,
+        model: result.model ?? model,
+        prompt_tokens: result.usage.promptTokens,
+        completion_tokens: result.usage.completionTokens,
+      });
+    }
+  } catch (error) {
+    logger.error('[/assistants/chat/] Error persisting Foundry assistant response', error);
+  }
+};
 
 /**
  * @route POST /
@@ -65,6 +379,29 @@ const chatV1 = async (req, res) => {
     parentMessageId: _parentId = Constants.NO_PARENT,
     clientTimestamp,
   } = req.body;
+
+  if (
+    endpoint === AzureAssistantsNewEndpoint ||
+    (endpoint === EModelEndpoint.azureAssistants && isFoundryAgentsConfigured())
+  ) {
+    await chatWithFoundryAssistantV1({
+      req,
+      res,
+      text,
+      model,
+      files,
+      endpoint,
+      promptPrefix,
+      assistant_id,
+      instructions,
+      endpointOption,
+      clientTimestamp,
+      thread_id: _thread_id,
+      conversationId: convoId,
+      parentMessageId: _parentId,
+    });
+    return;
+  }
 
   /** @type {OpenAI} */
   let openai;
@@ -122,7 +459,7 @@ const chatV1 = async (req, res) => {
       logger.debug('[/assistants/chat/] Request aborted on close');
     } else if (/Files.*are invalid/.test(error.message)) {
       const errorMessage = `Files are invalid, or may not have uploaded yet.${
-        endpoint === EModelEndpoint.azureAssistants
+        isLegacyAzureAssistantsEndpoint(endpoint)
           ? " If using Azure OpenAI, files are only available in the region of the assistant's model at the time of upload."
           : ''
       }`;
@@ -251,42 +588,6 @@ const chatV1 = async (req, res) => {
       throw new Error('Missing assistant_id');
     }
 
-    const checkBalanceBeforeRun = async () => {
-      const balanceConfig = getBalanceConfig(appConfig);
-      if (!balanceConfig?.enabled) {
-        return;
-      }
-      const transactions =
-        (await getTransactions({
-          user: req.user.id,
-          context: 'message',
-          conversationId,
-        })) ?? [];
-
-      const totalPreviousTokens = Math.abs(
-        transactions.reduce((acc, curr) => acc + curr.rawAmount, 0),
-      );
-
-      // TODO: make promptBuffer a config option; buffer for titles, needs buffer for system instructions
-      const promptBuffer = parentMessageId === Constants.NO_PARENT && !_thread_id ? 200 : 0;
-      // 5 is added for labels
-      let promptTokens = (await countTokens(text + (promptPrefix ?? ''))) + 5;
-      promptTokens += totalPreviousTokens + promptBuffer;
-      // Count tokens up to the current context window
-      promptTokens = Math.min(promptTokens, getModelMaxTokens(model));
-
-      await checkBalance({
-        req,
-        res,
-        txData: {
-          model,
-          user: req.user.id,
-          tokenType: 'prompt',
-          amount: promptTokens,
-        },
-      });
-    };
-
     const { openai: _openai } = await getOpenAIClient({
       req,
       res,
@@ -330,7 +631,7 @@ const chatV1 = async (req, res) => {
       file_ids = files.map(({ file_id }) => file_id);
       if (file_ids.length || thread_file_ids.length) {
         attachedFileIds = new Set([...file_ids, ...thread_file_ids]);
-        if (endpoint === EModelEndpoint.azureAssistants) {
+        if (isLegacyAzureAssistantsEndpoint(endpoint)) {
           userMessage.attachments = Array.from(attachedFileIds).map((file_id) => ({
             file_id,
             tools: [{ type: 'file_search' }],
@@ -478,7 +779,20 @@ const chatV1 = async (req, res) => {
       }
     };
 
-    const promises = [initializeThread(), checkBalanceBeforeRun()];
+    const promises = [
+      initializeThread(),
+      checkBalanceBeforeAssistantRun({
+        req,
+        res,
+        text,
+        model,
+        appConfig,
+        promptPrefix,
+        conversationId,
+        parentMessageId,
+        threadId: _thread_id,
+      }),
+    ];
     await Promise.all(promises);
 
     const sendInitialResponse = () => {
@@ -503,7 +817,7 @@ const chatV1 = async (req, res) => {
     let response;
 
     const processRun = async (retry = false) => {
-      if (endpoint === EModelEndpoint.azureAssistants) {
+      if (isLegacyAzureAssistantsEndpoint(endpoint)) {
         body.model = openai._options.model;
         openai.attachedFileIds = attachedFileIds;
         openai.visionPromise = visionPromise;

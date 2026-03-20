@@ -10,6 +10,7 @@ const {
   ContentTypes,
   ToolCallTypes,
   EModelEndpoint,
+  AzureAssistantsOldEndpoint,
   retrievalMimeTypes,
   AssistantStreamEvents,
 } = require('librechat-data-provider');
@@ -31,6 +32,9 @@ const { checkBalance } = require('~/models/balanceMethods');
 const { getConvo } = require('~/models/Conversation');
 const getLogStores = require('~/cache/getLogStores');
 const { getOpenAIClient } = require('./helpers');
+
+const isLegacyAzureAssistantsEndpoint = (endpoint) =>
+  endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
 
 /**
  * @route POST /
@@ -330,7 +334,7 @@ const chatV2 = async (req, res) => {
     let response;
 
     const processRun = async (retry = false) => {
-      if (endpoint === EModelEndpoint.azureAssistants) {
+      if (isLegacyAzureAssistantsEndpoint(endpoint)) {
         body.model = openai._options.model;
         openai.attachedFileIds = attachedFileIds;
         if (retry) {

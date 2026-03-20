@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { getEndpointField } from 'librechat-data-provider';
 import { useUserKeyQuery } from 'librechat-data-provider/react-query';
 import { ResizableHandleAlt, ResizablePanel, useMediaQuery } from '@librechat/client';
@@ -10,6 +10,7 @@ import { useGetEndpointsQuery } from '~/data-provider';
 import NavToggle from '~/components/Nav/NavToggle';
 import { useSidePanelContext } from '~/Providers';
 import { cn } from '~/utils';
+import { subscribeToAgentBuilderActivation } from '~/utils/sidePanel';
 import Nav from './Nav';
 
 const defaultMinSize = 20;
@@ -119,6 +120,43 @@ const SidePanel = ({
     setCollapsedSize,
     navCollapsedSize,
   ]);
+
+  const openAgentBuilderPanel = useCallback(() => {
+    if (newUser) {
+      setNewUser(false);
+    }
+
+    if (fullCollapse || isCollapsed || collapsedSize === 0 || minSize === 0) {
+      setMinSize(defaultMinSize);
+      setCollapsedSize(navCollapsedSize);
+      setFullCollapse(false);
+      setIsCollapsed(false);
+      localStorage.setItem('fullPanelCollapse', 'false');
+      panelRef.current?.expand();
+      return;
+    }
+
+    panelRef.current?.expand();
+  }, [
+    newUser,
+    fullCollapse,
+    isCollapsed,
+    collapsedSize,
+    minSize,
+    navCollapsedSize,
+    panelRef,
+    setNewUser,
+    setMinSize,
+    setCollapsedSize,
+    setFullCollapse,
+    setIsCollapsed,
+  ]);
+
+  // Keep side panel behavior in sync when an agent is picked from the top-left selector.
+  useEffect(
+    () => subscribeToAgentBuilderActivation(openAgentBuilderPanel),
+    [openAgentBuilderPanel],
+  );
 
   return (
     <>

@@ -8,6 +8,7 @@ import {
   dataService,
   getEndpointField,
   getDefaultParamsEndpoint,
+  resolveAssistantsConfigEndpoint,
 } from 'librechat-data-provider';
 import type {
   TEndpointsConfig,
@@ -97,7 +98,9 @@ const useNavigateToConvo = (index = 0) => {
 
     let convo = { ...conversation };
     const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
-    if (!convo.endpoint || !endpointsConfig?.[convo.endpoint]) {
+    const configEndpoint = resolveAssistantsConfigEndpoint(convo.endpoint);
+
+    if (!convo.endpoint || !endpointsConfig?.[configEndpoint]) {
       /* undefined/removed endpoint edge case */
       const modelsConfig = queryClient.getQueryData<TModelsConfig>([QueryKeys.models]);
       const defaultEndpoint = getDefaultEndpoint({

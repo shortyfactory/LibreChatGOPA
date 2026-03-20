@@ -15,12 +15,22 @@ const images = require('./images');
 const avatar = require('./avatar');
 const speech = require('./speech');
 
+const shouldSkipUAParser = (req) =>
+  req.method === 'GET' &&
+  (req.path.startsWith('/download/') || req.path.startsWith('/code/download/'));
+
 const initialize = async () => {
   const router = express.Router();
   router.use(requireJwtAuth);
   router.use(configMiddleware);
   router.use(checkBan);
-  router.use(uaParser);
+  router.use((req, res, next) => {
+    if (shouldSkipUAParser(req)) {
+      return next();
+    }
+
+    return uaParser(req, res, next);
+  });
 
   const upload = await createMulterInstance();
   router.post('/speech/stt', upload.single('audio'));
@@ -57,4 +67,4 @@ const initialize = async () => {
   return router;
 };
 
-module.exports = { initialize };
+module.exports = { initialize, shouldSkipUAParser };

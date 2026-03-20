@@ -27,6 +27,9 @@ export enum EModelEndpoint {
   bedrock = 'bedrock',
 }
 
+export const AzureAssistantsNewEndpoint = 'azureNewAssistants';
+export const AzureAssistantsOldEndpoint = 'azureOldAssistants';
+
 /** Mirrors `@librechat/agents` providers */
 export enum Providers {
   OPENAI = 'openAI',
@@ -126,7 +129,11 @@ export const getSettingsKeys = (endpoint: EModelEndpoint | string, model: string
   return [combinedKey, endpointKey];
 };
 
-export type AssistantsEndpoint = EModelEndpoint.assistants | EModelEndpoint.azureAssistants;
+export type AssistantsEndpoint =
+  | EModelEndpoint.assistants
+  | EModelEndpoint.azureAssistants
+  | typeof AzureAssistantsNewEndpoint
+  | typeof AzureAssistantsOldEndpoint;
 
 export const isAssistantsEndpoint = (_endpoint?: AssistantsEndpoint | null | string): boolean => {
   const endpoint = _endpoint ?? '';
@@ -134,6 +141,45 @@ export const isAssistantsEndpoint = (_endpoint?: AssistantsEndpoint | null | str
     return false;
   }
   return endpoint.toLowerCase().endsWith(EModelEndpoint.assistants);
+};
+
+export const isAzureAssistantsEndpoint = (
+  _endpoint?: AssistantsEndpoint | null | string,
+): boolean => {
+  const endpoint = _endpoint ?? '';
+  if (!endpoint) {
+    return false;
+  }
+
+  return (
+    endpoint === EModelEndpoint.azureAssistants ||
+    endpoint === AzureAssistantsNewEndpoint ||
+    endpoint === AzureAssistantsOldEndpoint
+  );
+};
+
+export const isAzureAssistantsNewEndpoint = (
+  _endpoint?: AssistantsEndpoint | null | string,
+): boolean => {
+  return (_endpoint ?? '') === AzureAssistantsNewEndpoint;
+};
+
+export const isAzureAssistantsOldEndpoint = (
+  _endpoint?: AssistantsEndpoint | null | string,
+): boolean => {
+  return (_endpoint ?? '') === AzureAssistantsOldEndpoint;
+};
+
+export const resolveAssistantsConfigEndpoint = (
+  _endpoint?: AssistantsEndpoint | null | string,
+): AssistantsEndpoint | string => {
+  const endpoint = _endpoint ?? '';
+
+  if (endpoint === AzureAssistantsNewEndpoint || endpoint === AzureAssistantsOldEndpoint) {
+    return EModelEndpoint.azureAssistants;
+  }
+
+  return endpoint;
 };
 
 export type AgentProvider = Exclude<keyof typeof EModelEndpoint, EModelEndpoint.agents> | string;
@@ -708,7 +754,7 @@ const DocumentType: z.ZodType<DocumentTypeValue> = z.lazy(() =>
 
 export const tConversationSchema = z.object({
   conversationId: z.string().nullable(),
-  endpoint: eModelEndpointSchema.nullable(),
+  endpoint: extendedModelEndpointSchema.nullable(),
   endpointType: eModelEndpointSchema.nullable().optional(),
   isArchived: z.boolean().optional(),
   title: z.string().nullable().or(z.literal('New Chat')).default('New Chat'),

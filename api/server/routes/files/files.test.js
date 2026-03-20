@@ -6,12 +6,20 @@ const { createMethods } = require('@librechat/data-schemas');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const {
   SystemRoles,
+  FileSources,
   ResourceType,
   AccessRoleIds,
   PrincipalType,
 } = require('librechat-data-provider');
 const { createAgent } = require('~/models/Agent');
 const { createFile } = require('~/models');
+
+jest.mock('@librechat/api', () => ({
+  getFoundryFileArrayBuffer: jest.fn(),
+  getFoundryFileInfo: jest.fn(),
+  isFoundryAgentsConfigured: jest.fn(),
+  verifyAgentUploadPermission: jest.fn(),
+}));
 
 // Only mock the external dependencies that we don't want to test
 jest.mock('~/server/services/Files/process', () => ({
@@ -52,6 +60,11 @@ jest.mock('~/config', () => ({
   },
 }));
 
+const {
+  getFoundryFileArrayBuffer,
+  getFoundryFileInfo,
+  isFoundryAgentsConfigured,
+} = require('@librechat/api');
 const { processDeleteRequest } = require('~/server/services/Files/process');
 
 // Import the router after mocks
@@ -132,6 +145,7 @@ describe('File Routes - Delete with Agent Access', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    isFoundryAgentsConfigured.mockReturnValue(false);
 
     // Clear database - clean up all test data
     await File.deleteMany({});
@@ -168,6 +182,12 @@ describe('File Routes - Delete with Agent Access', () => {
       type: 'text/plain',
     });
   });
+
+  const parseBinaryResponse = (res, callback) => {
+    const chunks = [];
+    res.on('data', (chunk) => chunks.push(chunk));
+    res.on('end', () => callback(null, Buffer.concat(chunks)));
+  };
 
   describe('DELETE /files', () => {
     it('should allow deleting files owned by the user', async () => {
@@ -421,6 +441,47 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(response.body.message).toBe('You can only delete files you have access to');
       expect(response.body.unauthorizedFiles).toContain(fileId);
       expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /files/download/:userId/:file_id', () => {
+    it('should download Foundry-backed Azure files when Foundry is configured', async () => {
+      const foundryFileId = 'assistant-foundry-file-id';
+      const fileBuffer = Buffer.from('excel-data');
+
+      await createFile({
+        user: otherUserId,
+        file_id: foundryFileId,
+        filename: 'tableau_3x4.xlsx',
+        filepath: `/files/${otherUserId.toString()}/${foundryFileId}/tableau_3x4.xlsx`,
+        bytes: fileBuffer.length,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        source: FileSources.azure,
+        model: 'gpt-5',
+      });
+
+      isFoundryAgentsConfigured.mockReturnValue(true);
+      getFoundryFileInfo.mockResolvedValue({
+        filename: 'tableau_3x4.xlsx',
+      });
+      getFoundryFileArrayBuffer.mockResolvedValue(
+        fileBuffer.buffer.slice(
+          fileBuffer.byteOffset,
+          fileBuffer.byteOffset + fileBuffer.byteLength,
+        ),
+      );
+
+      const response = await request(app)
+        .get(`/files/download/${otherUserId.toString()}/${foundryFileId}`)
+        .buffer(true)
+        .parse(parseBinaryResponse);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-disposition']).toContain('tableau_3x4.xlsx');
+      expect(response.headers['x-file-metadata']).toBeDefined();
+      expect(response.body.equals(fileBuffer)).toBe(true);
+      expect(getFoundryFileInfo).toHaveBeenCalledWith(foundryFileId);
+      expect(getFoundryFileArrayBuffer).toHaveBeenCalledWith(foundryFileId);
     });
   });
 });

@@ -5,6 +5,7 @@ import {
   isAgentsEndpoint,
   defaultOrderQuery,
   defaultAssistantsVersion,
+  resolveAssistantsConfigEndpoint,
 } from 'librechat-data-provider';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import type {
@@ -193,15 +194,23 @@ export const useAvailableToolsQuery = <TData = t.TPlugin[]>(
 ): QueryObserverResult<TData> => {
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
-  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!endpointsConfig?.[endpoint]?.userProvide;
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([
+    QueryKeys.name,
+    configEndpoint,
+  ]);
+  const userProvidesKey = !!endpointsConfig?.[configEndpoint]?.userProvide;
   const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
-  const enabled = isAgentsEndpoint(endpoint) ? true : !!endpointsConfig?.[endpoint] && keyProvided;
+  const enabled = isAgentsEndpoint(endpoint)
+    ? true
+    : !!endpointsConfig?.[configEndpoint] && keyProvided;
   const version: string | number | undefined =
-    endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
+    endpointsConfig?.[configEndpoint]?.version ??
+    defaultAssistantsVersion[endpoint] ??
+    defaultAssistantsVersion[configEndpoint];
   return useQuery<t.TPlugin[], unknown, TData>(
     [QueryKeys.tools],
-    () => dataService.getAvailableTools(endpoint, version),
+    () => dataService.getAvailableTools(configEndpoint, version),
     {
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
@@ -222,11 +231,18 @@ export const useListAssistantsQuery = <TData = AssistantListResponse>(
 ): QueryObserverResult<TData> => {
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
-  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!(endpointsConfig?.[endpoint]?.userProvide ?? false);
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([
+    QueryKeys.name,
+    configEndpoint,
+  ]);
+  const userProvidesKey = !!(endpointsConfig?.[configEndpoint]?.userProvide ?? false);
   const keyProvided = userProvidesKey ? !!(keyExpiry?.expiresAt ?? '') : true;
-  const enabled = !!endpointsConfig?.[endpoint] && keyProvided;
-  const version = endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
+  const enabled = !!endpointsConfig?.[configEndpoint] && keyProvided;
+  const version =
+    endpointsConfig?.[configEndpoint]?.version ??
+    defaultAssistantsVersion[endpoint] ??
+    defaultAssistantsVersion[configEndpoint];
   return useQuery<AssistantListResponse, unknown, TData>(
     [QueryKeys.assistants, endpoint, params],
     () => dataService.listAssistants({ ...params, endpoint }, version),
@@ -288,11 +304,18 @@ export const useGetAssistantByIdQuery = (
 ): QueryObserverResult<Assistant> => {
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
-  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = endpointsConfig?.[endpoint]?.userProvide ?? false;
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([
+    QueryKeys.name,
+    configEndpoint,
+  ]);
+  const userProvidesKey = endpointsConfig?.[configEndpoint]?.userProvide ?? false;
   const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
-  const enabled = !!endpointsConfig?.[endpoint] && keyProvided;
-  const version = endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
+  const enabled = !!endpointsConfig?.[configEndpoint] && keyProvided;
+  const version =
+    endpointsConfig?.[configEndpoint]?.version ??
+    defaultAssistantsVersion[endpoint] ??
+    defaultAssistantsVersion[configEndpoint];
   return useQuery<Assistant>(
     [QueryKeys.assistant, assistant_id],
     () =>
@@ -322,11 +345,15 @@ export const useGetActionsQuery = <TData = Action[]>(
 ): QueryObserverResult<TData> => {
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
-  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!endpointsConfig?.[endpoint]?.userProvide;
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([
+    QueryKeys.name,
+    configEndpoint,
+  ]);
+  const userProvidesKey = !!endpointsConfig?.[configEndpoint]?.userProvide;
   const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
   const enabled =
-    (!!endpointsConfig?.[endpoint] && keyProvided) || endpoint === EModelEndpoint.agents;
+    (!!endpointsConfig?.[configEndpoint] && keyProvided) || endpoint === EModelEndpoint.agents;
 
   return useQuery<Action[], unknown, TData>([QueryKeys.actions], () => dataService.getActions(), {
     refetchOnWindowFocus: false,
@@ -346,11 +373,18 @@ export const useGetAssistantDocsQuery = <TData = AssistantDocument[]>(
 ): QueryObserverResult<TData> => {
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
-  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!(endpointsConfig?.[endpoint]?.userProvide ?? false);
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([
+    QueryKeys.name,
+    configEndpoint,
+  ]);
+  const userProvidesKey = !!(endpointsConfig?.[configEndpoint]?.userProvide ?? false);
   const keyProvided = userProvidesKey ? !!(keyExpiry?.expiresAt ?? '') : true;
-  const enabled = !!endpointsConfig?.[endpoint] && keyProvided;
-  const version = endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
+  const enabled = !!endpointsConfig?.[configEndpoint] && keyProvided;
+  const version =
+    endpointsConfig?.[configEndpoint]?.version ??
+    defaultAssistantsVersion[endpoint] ??
+    defaultAssistantsVersion[configEndpoint];
 
   return useQuery<AssistantDocument[], unknown, TData>(
     [QueryKeys.assistantDocs, endpoint],

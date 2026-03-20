@@ -1,4 +1,8 @@
-import { EModelEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from 'librechat-data-provider';
 import type { FC } from 'react';
 import type { TModelSelectProps } from '~/common';
 import AssistantsSettings from './Assistants';
@@ -10,6 +14,8 @@ import OpenAISettings from './OpenAI';
 const settings: { [key: string]: FC<TModelSelectProps> | undefined } = {
   [EModelEndpoint.assistants]: AssistantsSettings,
   [EModelEndpoint.azureAssistants]: AssistantsSettings,
+  [AzureAssistantsNewEndpoint]: AssistantsSettings,
+  [AzureAssistantsOldEndpoint]: AssistantsSettings,
   [EModelEndpoint.agents]: OpenAISettings,
   [EModelEndpoint.openAI]: OpenAISettings,
   [EModelEndpoint.custom]: OpenAISettings,

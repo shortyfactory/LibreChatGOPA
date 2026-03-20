@@ -1,4 +1,8 @@
-import { EModelEndpoint } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from 'librechat-data-provider';
 import type { TAssistantsMap } from 'librechat-data-provider';
 import { useListAssistantsQuery } from '~/data-provider';
 import { mapAssistants } from '~/utils';
@@ -20,9 +24,27 @@ export default function useAssistantsMap({
       enabled: isAuthenticated,
     },
   );
+  const { data: azureAssistantsNew = {} } = useListAssistantsQuery(
+    AzureAssistantsNewEndpoint,
+    undefined,
+    {
+      select: (res) => mapAssistants(res.data),
+      enabled: isAuthenticated,
+    },
+  );
+  const { data: azureAssistantsOld = {} } = useListAssistantsQuery(
+    AzureAssistantsOldEndpoint,
+    undefined,
+    {
+      select: (res) => mapAssistants(res.data),
+      enabled: isAuthenticated,
+    },
+  );
 
   return {
     [EModelEndpoint.assistants]: assistants,
     [EModelEndpoint.azureAssistants]: azureAssistants,
+    [AzureAssistantsNewEndpoint]: azureAssistantsNew,
+    [AzureAssistantsOldEndpoint]: azureAssistantsOld,
   };
 }

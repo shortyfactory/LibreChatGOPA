@@ -1,4 +1,4 @@
-import { EModelEndpoint } from 'librechat-data-provider';
+import { EModelEndpoint, AzureAssistantsNewEndpoint } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
 import buildDefaultConvo from '../buildDefaultConvo';
 
@@ -19,6 +19,28 @@ const baseConversation: TConversation = {
 };
 
 describe('buildDefaultConvo - defaultParamsEndpoint', () => {
+  it('should preserve assistant alias endpoints while parsing assistant defaults', () => {
+    const preset: TConversation = {
+      ...baseConversation,
+      endpoint: AzureAssistantsNewEndpoint,
+      endpointType: EModelEndpoint.azureAssistants,
+      assistant_id: 'asst_foundry_test',
+      model: 'gpt-4.1',
+    };
+
+    const result = buildDefaultConvo({
+      models: [],
+      conversation: baseConversation,
+      endpoint: AzureAssistantsNewEndpoint,
+      lastConversationSetup: preset,
+    });
+
+    expect(result.endpoint).toBe(AzureAssistantsNewEndpoint);
+    expect(result.endpointType).toBe(EModelEndpoint.azureAssistants);
+    expect(result.assistant_id).toBe('asst_foundry_test');
+    expect(result.model).toBe('gpt-4.1');
+  });
+
   describe('custom endpoint with defaultParamsEndpoint: anthropic', () => {
     const models = ['anthropic/claude-opus-4.5', 'anthropic/claude-sonnet-4'];
 

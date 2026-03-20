@@ -1,4 +1,5 @@
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { useEffect } from 'react';
 import {
   AccordionContent,
   AccordionItem,
@@ -10,11 +11,30 @@ import type { NavLink, NavProps } from '~/common';
 import { ActivePanelProvider, useActivePanel } from '~/Providers';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
+import { getAgentBuilderPanelId, subscribeToAgentBuilderActivation } from '~/utils/sidePanel';
 
 function NavContent({ links, isCollapsed, resize }: Omit<NavProps, 'defaultActive'>) {
   const localize = useLocalize();
   const { active, setActive } = useActivePanel();
   const getVariant = (link: NavLink) => (link.id === active ? 'default' : 'ghost');
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAgentBuilderActivation(() => {
+      const builderId = getAgentBuilderPanelId();
+      const hasBuilder = links.some((link) => link.id === builderId);
+
+      if (!hasBuilder) {
+        return;
+      }
+
+      setActive(builderId);
+      if (isCollapsed) {
+        resize?.(25);
+      }
+    });
+
+    return unsubscribe;
+  }, [isCollapsed, links, resize, setActive]);
 
   return (
     <div
