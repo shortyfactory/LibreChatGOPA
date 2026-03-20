@@ -160,6 +160,98 @@ docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./
 docker compose -f ./deploy-compose.yml -f ./deploy-compose.local-build.yml -f ./deploy-compose.searxng.yml -f ./deploy-compose.prod-ssl.yml ps
 ```
 
+## Mongo Et Backups
+
+### Conteneur et base par defaut
+
+- conteneur MongoDB: `chat-mongodb`
+- base MongoDB: `LibreChat`
+- collection utilisateurs: `users`
+
+### Lister les users
+
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval "db.users.find({}, { email: 1, username: 1, name: 1, provider: 1, role: 1, termsAccepted: 1, emailVerified: 1 }).pretty()"
+```
+
+### Compter les users
+
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval "db.users.countDocuments()"
+```
+
+### Changer le role d'un user
+
+Passer un user en `ADMIN`:
+
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval 'db.users.updateOne({ email: "user@example.com" }, { $set: { role: "ADMIN" } })'
+```
+
+Remettre un user en `USER`:
+
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval 'db.users.updateOne({ email: "user@example.com" }, { $set: { role: "USER" } })'
+```
+
+Verifier ensuite:
+
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval 'db.users.findOne({ email: "user@example.com" }, { email: 1, provider: 1, role: 1 })'
+```
+
+### Script de backup Linux
+
+Le fichier [backup-librechat.sh](./backup-librechat.sh) est prevu pour le serveur Linux.
+
+Rendre le script executable:
+
+```bash
+chmod +x ~/backup-librechat.sh
+```
+
+Lancer un backup:
+
+```bash
+~/backup-librechat.sh
+```
+
+Changer la retention:
+
+```bash
+RETENTION_DAYS=30 ~/backup-librechat.sh
+```
+
+Le script:
+
+- cree un backup `mongodump` au format `.archive`
+- le copie dans `./librechat-backups` a la racine du projet
+- supprime automatiquement les backups plus vieux que `RETENTION_DAYS`
+
+### Script de backup PowerShell
+
+Le fichier [backup-librechat.ps1](./backup-librechat.ps1) est prevu pour Windows/PowerShell.
+
+Lancer un backup local:
+
+```powershell
+.\backup-librechat.ps1
+```
+
+Changer la retention:
+
+```powershell
+.\backup-librechat.ps1 -RetentionDays 30
+```
+
+Changer le nom du conteneur ou de la base:
+
+```powershell
+.\backup-librechat.ps1 -ContainerName chat-mongodb -DatabaseName LibreChat
+```
+
+Par defaut, le script PowerShell ecrit aussi dans `.\librechat-backups` a la racine du projet.
+
 ## Notes Importantes
 
 - `deploy-compose.local-auth.yml` est reserve au local. Ne pas l'utiliser en production.
