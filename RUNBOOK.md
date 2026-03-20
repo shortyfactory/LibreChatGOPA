@@ -252,6 +252,50 @@ Changer le nom du conteneur ou de la base:
 
 Par defaut, le script PowerShell ecrit aussi dans `.\librechat-backups` a la racine du projet.
 
+### Script de restore Linux
+
+Le fichier [restore-librechat.sh](./restore-librechat.sh) est prevu pour le serveur Linux.
+
+Restaurer le backup le plus recent:
+
+```bash
+./restore-librechat.sh
+```
+
+Restaurer un fichier precis:
+
+```bash
+./restore-librechat.sh ./librechat-backups/librechat-backup-2026-03-20-0248.archive
+```
+
+Passer outre la confirmation:
+
+```bash
+FORCE_RESTORE=true ./restore-librechat.sh
+```
+
+### Script de restore PowerShell
+
+Le fichier [restore-librechat.ps1](./restore-librechat.ps1) est prevu pour Windows/PowerShell.
+
+Restaurer le backup le plus recent:
+
+```powershell
+.\restore-librechat.ps1
+```
+
+Restaurer un fichier precis:
+
+```powershell
+.\restore-librechat.ps1 -RestoreFile .\librechat-backups\librechat-backup-2026-03-20-0248.archive
+```
+
+Passer outre la confirmation:
+
+```powershell
+.\restore-librechat.ps1 -Force
+```
+
 ## Notes Importantes
 
 - `deploy-compose.local-auth.yml` est reserve au local. Ne pas l'utiliser en production.
@@ -262,3 +306,4 @@ Par defaut, le script PowerShell ecrit aussi dans `.\librechat-backups` a la rac
 - `deploy-compose.searxng.yml` ajoute le conteneur SearXNG, mais ton `librechat.yaml` doit aussi choisir `searchProvider: "searxng"` pour en profiter.
 - `librechat.yaml` est ignore par Git. Garde une copie de reference locale ou recree-le a partir de `librechat.example.yaml`.
 - Si `npm run build` casse sous Windows, verifie d'abord que `packages/client` et `packages/data-provider` ont bien ete rebuild apres un changement de config.
+- La restauration ecrase la base cible avec `mongorestore --drop`. Faire un backup avant toute restauration.
