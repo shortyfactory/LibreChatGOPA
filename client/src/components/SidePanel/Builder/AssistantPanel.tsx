@@ -8,6 +8,7 @@ import {
   actionDelimiter,
   ImageVisionTool,
   defaultAssistantFormValues,
+  resolveAssistantsConfigEndpoint,
 } from 'librechat-data-provider';
 import type { FunctionTool, TConfig } from 'librechat-data-provider';
 import type { AssistantForm, AssistantPanelProps } from '~/common';
@@ -72,6 +73,11 @@ export default function AssistantPanel({
   const activeModel = useMemo(() => {
     return assistantMap?.[endpoint]?.[assistant_id]?.model;
   }, [assistantMap, endpoint, assistant_id]);
+  const modelEndpoint = useMemo(() => resolveAssistantsConfigEndpoint(endpoint), [endpoint]);
+  const availableModels = useMemo(
+    () => modelsQuery.data?.[modelEndpoint] ?? modelsQuery.data?.[endpoint] ?? [],
+    [endpoint, modelEndpoint, modelsQuery.data],
+  );
 
   const toolsEnabled = useMemo(
     () => assistantsConfig?.capabilities?.includes(Capabilities.tools),
@@ -363,7 +369,7 @@ export default function AssistantPanel({
                     emptyTitle={true}
                     value={field.value}
                     setValue={field.onChange}
-                    availableValues={modelsQuery.data?.[endpoint] ?? []}
+                    availableValues={availableModels}
                     showAbove={false}
                     showLabel={false}
                     className={cn(

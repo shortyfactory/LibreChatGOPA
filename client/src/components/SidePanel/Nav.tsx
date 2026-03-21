@@ -1,5 +1,5 @@
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   AccordionContent,
   AccordionItem,
@@ -11,12 +11,30 @@ import type { NavLink, NavProps } from '~/common';
 import { ActivePanelProvider, useActivePanel } from '~/Providers';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
-import { getAgentBuilderPanelId, subscribeToAgentBuilderActivation } from '~/utils/sidePanel';
+import {
+  clearPendingAgentBuilderActivation,
+  clearPendingAssistantBuilderActivation,
+  getAgentBuilderPanelId,
+  getAssistantBuilderPanelId,
+  hasPendingAgentBuilderActivation,
+  hasPendingAssistantBuilderActivation,
+  subscribeToAgentBuilderActivation,
+  subscribeToAssistantBuilderActivation,
+} from '~/utils/sidePanel';
 
 function NavContent({ links, isCollapsed, resize }: Omit<NavProps, 'defaultActive'>) {
   const localize = useLocalize();
   const { active, setActive } = useActivePanel();
   const getVariant = (link: NavLink) => (link.id === active ? 'default' : 'ghost');
+  const activatePanel = useCallback(
+    (panelId: string) => {
+      setActive(panelId);
+      if (isCollapsed) {
+        resize?.(25);
+      }
+    },
+    [isCollapsed, resize, setActive],
+  );
 
   useEffect(() => {
     const unsubscribe = subscribeToAgentBuilderActivation(() => {
@@ -27,14 +45,45 @@ function NavContent({ links, isCollapsed, resize }: Omit<NavProps, 'defaultActiv
         return;
       }
 
-      setActive(builderId);
-      if (isCollapsed) {
-        resize?.(25);
-      }
+      activatePanel(builderId);
+      clearPendingAgentBuilderActivation();
     });
 
     return unsubscribe;
-  }, [isCollapsed, links, resize, setActive]);
+  }, [activatePanel, links]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAssistantBuilderActivation(() => {
+      const builderId = getAssistantBuilderPanelId();
+      const hasBuilder = links.some((link) => link.id === builderId);
+
+      if (!hasBuilder) {
+        return;
+      }
+
+      activatePanel(builderId);
+      clearPendingAssistantBuilderActivation();
+    });
+
+    return unsubscribe;
+  }, [activatePanel, links]);
+
+  useEffect(() => {
+    const agentBuilderId = getAgentBuilderPanelId();
+    const assistantBuilderId = getAssistantBuilderPanelId();
+    const hasAgentBuilder = links.some((link) => link.id === agentBuilderId);
+    const hasAssistantBuilder = links.some((link) => link.id === assistantBuilderId);
+
+    if (hasAgentBuilder && hasPendingAgentBuilderActivation()) {
+      activatePanel(agentBuilderId);
+      clearPendingAgentBuilderActivation();
+    }
+
+    if (hasAssistantBuilder && hasPendingAssistantBuilderActivation()) {
+      activatePanel(assistantBuilderId);
+      clearPendingAssistantBuilderActivation();
+    }
+  }, [activatePanel, links]);
 
   return (
     <div

@@ -21,7 +21,7 @@ import {
   getConvoSwitchLogic,
   logger,
 } from '~/utils';
-import { dispatchActivateAgentBuilder } from '~/utils/sidePanel';
+import { dispatchActivateAgentBuilder, dispatchActivateAssistantBuilder } from '~/utils/sidePanel';
 import { useDefaultConvo } from '~/hooks';
 import store from '~/store';
 
@@ -172,6 +172,7 @@ export default function useSelectMention({
         template.agent_id = agent_id;
       }
       const shouldActivateAgentBuilder = isAgentsEndpoint(newEndpoint) && !!agent_id;
+      const shouldActivateAssistantBuilder = isAssistantsEndpoint(newEndpoint) && !!assistant_id;
       clearModelForNonEphemeralAgent(template);
 
       template.spec = null;
@@ -208,6 +209,9 @@ export default function useSelectMention({
         if (shouldActivateAgentBuilder) {
           dispatchActivateAgentBuilder();
         }
+        if (shouldActivateAssistantBuilder) {
+          dispatchActivateAssistantBuilder();
+        }
         return;
       }
 
@@ -226,6 +230,9 @@ export default function useSelectMention({
 
       if (shouldActivateAgentBuilder) {
         dispatchActivateAgentBuilder();
+      }
+      if (shouldActivateAssistantBuilder) {
+        dispatchActivateAssistantBuilder();
       }
     },
     [getConversation, getDefaultConversation, modularChat, newConversation, endpointsConfig],

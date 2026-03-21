@@ -10,7 +10,10 @@ import { useGetEndpointsQuery } from '~/data-provider';
 import NavToggle from '~/components/Nav/NavToggle';
 import { useSidePanelContext } from '~/Providers';
 import { cn } from '~/utils';
-import { subscribeToAgentBuilderActivation } from '~/utils/sidePanel';
+import {
+  subscribeToAgentBuilderActivation,
+  subscribeToAssistantBuilderActivation,
+} from '~/utils/sidePanel';
 import Nav from './Nav';
 
 const defaultMinSize = 20;
@@ -155,6 +158,12 @@ const SidePanel = ({
   // Keep side panel behavior in sync when an agent is picked from the top-left selector.
   useEffect(
     () => subscribeToAgentBuilderActivation(openAgentBuilderPanel),
+    [openAgentBuilderPanel],
+  );
+
+  // Keep side panel behavior in sync when an assistant is picked from the top-left selector.
+  useEffect(
+    () => subscribeToAssistantBuilderActivation(openAgentBuilderPanel),
     [openAgentBuilderPanel],
   );
 

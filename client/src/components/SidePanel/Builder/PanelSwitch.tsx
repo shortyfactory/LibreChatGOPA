@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { defaultAssistantsVersion } from 'librechat-data-provider';
+import { defaultAssistantsVersion, resolveAssistantsConfigEndpoint } from 'librechat-data-provider';
 import type { Action, TEndpointsConfig, AssistantsEndpoint } from 'librechat-data-provider';
 import type { ActionsEndpoint } from '~/common';
 import {
@@ -25,10 +25,14 @@ export default function PanelSwitch() {
   const { data: documentsMap = null } = useGetAssistantDocsQuery(conversation?.endpoint ?? '', {
     select: (data) => new Map(data.map((dbA) => [dbA.assistant_id, dbA])),
   });
+  const configEndpoint = useMemo(
+    () => resolveAssistantsConfigEndpoint(conversation?.endpoint),
+    [conversation?.endpoint],
+  );
 
   const assistantsConfig = useMemo(
-    () => endpointsConfig?.[conversation?.endpoint ?? ''],
-    [conversation?.endpoint, endpointsConfig],
+    () => endpointsConfig?.[configEndpoint ?? ''],
+    [configEndpoint, endpointsConfig],
   );
 
   useEffect(() => {
