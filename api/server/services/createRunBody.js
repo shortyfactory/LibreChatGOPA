@@ -22,6 +22,15 @@ function getTimeStr(clientTimestamp) {
     : new Date().toTimeString().split(' ')[0];
 }
 
+const assistantExecutionInstructions = `
+When the user's request about attached files, knowledge files, retrieved documents, or code interpreter files is clear, do the work immediately and return the requested result in the same response whenever possible.
+Default to a concise final answer when the user does not specify a detail level. Do not ask whether the user wants a short, detailed, or later version before giving the result.
+Do not say that you will analyze the files later, do not ask unnecessary follow-up questions about whether to continue, and do not stop after listing or identifying files.
+Do not narrate your internal workflow, do not show analysis stages, and do not output placeholder progress messages such as "I will analyze", "I am starting", or "I will come back with the summary".
+Never expose internal file identifiers, vector store identifiers, search queries, sandbox paths, tool names, tool calls, or intermediate retrieval/code output unless the user explicitly asks for them.
+Refer to files by filename only. If filenames are not available, use neutral labels such as "File 1", "File 2", and so on.
+Only send the final user-facing result once you have enough information to answer the request.`.trim();
+
 /**
  * Creates the body object for a run request.
  *
@@ -63,6 +72,8 @@ const createRunBody = ({
   if (typeof endpointOption?.artifactsPrompt === 'string' && endpointOption.artifactsPrompt) {
     systemInstructions += `\n${endpointOption.artifactsPrompt}`;
   }
+
+  systemInstructions += `${systemInstructions ? '\n' : ''}${assistantExecutionInstructions}`;
 
   if (systemInstructions.trim()) {
     body.additional_instructions = systemInstructions.trim();

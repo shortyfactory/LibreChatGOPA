@@ -7,6 +7,7 @@ const {
   AzureAssistantsOldEndpoint,
   resolveAssistantsConfigEndpoint,
 } = require('librechat-data-provider');
+const { logger } = require('@librechat/data-schemas');
 const { isFoundryAgentsConfigured, listFoundryAgents } = require('@librechat/api');
 const {
   initializeClient: initAzureClient,
@@ -60,25 +61,20 @@ const getCurrentVersion = async (req, endpoint) => {
  */
 const _listAssistants = async ({ req, res, version, query }) => {
   const { openai } = await getOpenAIClient({ req, res, version });
-  return openai.beta.assistants.list(query);
+  return listAllAssistantsWithClient({ openai, query });
 };
 
-/**
- * Fetches all assistants based on provided query params, until `has_more` is `false`.
- *
- * @async
- * @param {object} params - The parameters object.
- * @param {object} params.req - The request object, used for initializing the client.
- * @param {object} params.res - The response object, used for initializing the client.
- * @param {string} params.version - The API version to use.
- * @param {Omit<AssistantListParams, 'endpoint'>} params.query - The query parameters to list assistants (e.g., limit, order).
- * @returns {Promise<Array<Assistant>>} A promise that resolves to the response from the `openai.beta.assistants.list` method call.
- */
-const listAllAssistants = async ({ req, res, version, query }) => {
-  /** @type {{ openai: OpenAI }} */
-  const { openai } = await getOpenAIClient({ req, res, version });
-  const allAssistants = [];
+const createGroupRequest = (req, model) => {
+  const groupReq = Object.create(req);
+  groupReq.body = {
+    ...(req.body ?? {}),
+    model,
+  };
+  return groupReq;
+};
 
+const listAllAssistantsWithClient = async ({ openai, query }) => {
+  const allAssistants = [];
   let first_id;
   let last_id;
   let afterToken = query.after;
@@ -117,6 +113,167 @@ const listAllAssistants = async ({ req, res, version, query }) => {
   };
 };
 
+const getAssistantFileMetadata = async ({ openai, file_id, fileCache }) => {
+  if (fileCache.has(file_id)) {
+    return fileCache.get(file_id);
+  }
+
+  const filePromise = openai.files
+    .retrieve(file_id)
+    .then((file) => ({
+      ...file,
+      file_id,
+      filename: file.filename ?? file_id,
+    }))
+    .catch((error) => {
+      logger.warn('[listAssistantsForAzure] Failed to retrieve assistant file metadata', {
+        file_id,
+        error: error?.message ?? String(error),
+      });
+      return null;
+    });
+
+  fileCache.set(file_id, filePromise);
+  return filePromise;
+};
+
+const listVectorStoreFiles = async ({ openai, vector_store_id, fileCache }) => {
+  try {
+    const files = [];
+
+    for await (const vectorStoreFile of openai.vectorStores.files.list(vector_store_id, {
+      filter: 'completed',
+      order: 'desc',
+    })) {
+      const file = await getAssistantFileMetadata({
+        openai,
+        file_id: vectorStoreFile.id,
+        fileCache,
+      });
+
+      if (file) {
+        files.push(file);
+      }
+    }
+
+    return files;
+  } catch (error) {
+    logger.warn('[listAssistantsForAzure] Failed to retrieve vector store files', {
+      vector_store_id,
+      error: error?.message ?? String(error),
+    });
+    return [];
+  }
+};
+
+const enrichAzureAssistantFiles = async ({ assistants, openai }) => {
+  const fileCache = new Map();
+
+  return Promise.all(
+    assistants.map(async (assistant) => {
+      const codeInterpreter = assistant.tool_resources?.code_interpreter;
+      const codeInterpreterFileIds = codeInterpreter?.file_ids;
+      const fileSearch = assistant.tool_resources?.file_search;
+      const vectorStoreIds = fileSearch?.vector_store_ids;
+
+      const codeInterpreterFiles = (
+        await Promise.all(
+          (codeInterpreterFileIds ?? []).map((file_id) =>
+            getAssistantFileMetadata({
+              openai,
+              file_id,
+              fileCache,
+            }),
+          ),
+        )
+      ).filter(Boolean);
+
+      const fileSearchFiles = (
+        await Promise.all(
+          (vectorStoreIds ?? []).map((vector_store_id) =>
+            listVectorStoreFiles({
+              openai,
+              vector_store_id,
+              fileCache,
+            }),
+          ),
+        )
+      )
+        .flat()
+        .filter(Boolean);
+
+      const uniqueFileSearchFiles = Array.from(
+        new Map(
+          fileSearchFiles
+            .map((file) => {
+              const file_id = file.file_id ?? file.id;
+
+              if (!file_id) {
+                return null;
+              }
+
+              return [
+                file_id,
+                {
+                  ...file,
+                  file_id,
+                },
+              ];
+            })
+            .filter(Boolean),
+        ).values(),
+      );
+
+      if (codeInterpreterFiles.length === 0 && uniqueFileSearchFiles.length === 0) {
+        return assistant;
+      }
+
+      return {
+        ...assistant,
+        tool_resources: {
+          ...assistant.tool_resources,
+          ...(codeInterpreterFiles.length > 0
+            ? {
+                code_interpreter: {
+                  ...codeInterpreter,
+                  files: codeInterpreterFiles,
+                },
+              }
+            : {}),
+          ...(uniqueFileSearchFiles.length > 0
+            ? {
+                file_search: {
+                  ...fileSearch,
+                  file_ids: uniqueFileSearchFiles
+                    .map((file) => file.file_id ?? file.id)
+                    .filter(Boolean),
+                  files: uniqueFileSearchFiles,
+                },
+              }
+            : {}),
+        },
+      };
+    }),
+  );
+};
+
+/**
+ * Fetches all assistants based on provided query params, until `has_more` is `false`.
+ *
+ * @async
+ * @param {object} params - The parameters object.
+ * @param {object} params.req - The request object, used for initializing the client.
+ * @param {object} params.res - The response object, used for initializing the client.
+ * @param {string} params.version - The API version to use.
+ * @param {Omit<AssistantListParams, 'endpoint'>} params.query - The query parameters to list assistants (e.g., limit, order).
+ * @returns {Promise<Array<Assistant>>} A promise that resolves to the response from the `openai.beta.assistants.list` method call.
+ */
+const listAllAssistants = async ({ req, res, version, query }) => {
+  /** @type {{ openai: OpenAI }} */
+  const { openai } = await getOpenAIClient({ req, res, version });
+  return listAllAssistantsWithClient({ openai, query });
+};
+
 /**
  * Asynchronously lists assistants for Azure configured groups.
  *
@@ -133,34 +290,42 @@ const listAllAssistants = async ({ req, res, version, query }) => {
  * @returns {Promise<AssistantListResponse>} A promise that resolves to an array of assistant data merged with their respective model information.
  */
 const listAssistantsForAzure = async ({ req, res, version, azureConfig = {}, query }) => {
-  /** @type {Array<[string, TAzureModelConfig]>} */
-  const groupModelTuples = [];
   const promises = [];
-  /** @type {Array<TAzureGroup>} */
-  const groups = [];
 
   const { groupMap, assistantGroups } = azureConfig;
 
   for (const groupName of assistantGroups) {
     const group = groupMap[groupName];
-    groups.push(group);
-
     const currentModelTuples = Object.entries(group?.models);
-    groupModelTuples.push(currentModelTuples);
+    const firstModel = currentModelTuples[0]?.[0];
 
-    /* The specified model is only necessary to
-    fetch assistants for the shared instance */
-    req.body = req.body || {}; // Express 5: req.body is undefined instead of {} when no body parser runs
-    req.body.model = currentModelTuples[0][0];
-    promises.push(listAllAssistants({ req, res, version, query }));
+    if (!firstModel) {
+      continue;
+    }
+
+    promises.push(
+      (async () => {
+        const groupReq = createGroupRequest(req, firstModel);
+        const { openai } = await getOpenAIClient({ req: groupReq, res, version });
+        const response = await listAllAssistantsWithClient({ openai, query });
+        const assistants = await enrichAzureAssistantFiles({
+          assistants: response.data,
+          openai,
+        });
+
+        return {
+          group,
+          currentModelTuples,
+          assistants,
+        };
+      })(),
+    );
   }
 
   const resolvedQueries = await Promise.all(promises);
-  const data = resolvedQueries.flatMap((res, i) =>
-    res.data.map((assistant) => {
+  const data = resolvedQueries.flatMap(({ assistants, group: currentGroup, currentModelTuples }) =>
+    assistants.map((assistant) => {
       const deploymentName = assistant.model;
-      const currentGroup = groups[i];
-      const currentModelTuples = groupModelTuples[i];
       const firstModel = currentModelTuples[0][0];
 
       if (currentGroup.deploymentName === deploymentName) {

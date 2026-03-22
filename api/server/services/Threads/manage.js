@@ -446,16 +446,6 @@ async function checkMessageGaps({
       currentMessage.id = step.message.id;
       currentMessage.created_at = step.message.created_at;
       currentMessage.content = currentMessage.content.concat(step.message.content);
-    } else if (step.step_details?.type === 'tool_calls' && step.step_details?.tool_calls?.length) {
-      currentMessage.content = currentMessage.content.concat(
-        step.step_details?.tool_calls.map((toolCall) => ({
-          [ContentTypes.TOOL_CALL]: {
-            ...toolCall,
-            progress: 2,
-          },
-          type: ContentTypes.TOOL_CALL,
-        })),
-      );
     }
   }
 

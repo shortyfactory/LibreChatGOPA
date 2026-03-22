@@ -91,10 +91,15 @@ export default function useSelectMention({
       const isModular = isCurrentModular && isNewModular && shouldSwitch;
       if (isExistingConversation && isModular) {
         template.endpointType = newEndpointType as EModelEndpoint | undefined;
+        const nextConversation = {
+          ...(conversation ?? {}),
+          endpointType: template.endpointType,
+          thread_id: isAssistantsEndpoint(newEndpoint) ? undefined : conversation?.thread_id,
+        };
 
         const currentConvo = getDefaultConversation({
           /* target endpointType is necessary to avoid endpoint mixing */
-          conversation: { ...(conversation ?? {}), endpointType: template.endpointType },
+          conversation: nextConversation,
           preset: template,
           cleanOutput: true,
         });
@@ -181,16 +186,18 @@ export default function useSelectMention({
       const resolvedEndpointType = kwargs.endpointType ?? newEndpointType;
       if (isExistingConversation && isCurrentModular && isNewModular && shouldSwitch) {
         template.endpointType = resolvedEndpointType;
+        const nextConversation = {
+          ...(conversation ?? {}),
+          spec: null,
+          iconURL: null,
+          modelLabel: null,
+          endpointType: template.endpointType,
+          thread_id: isAssistantsEndpoint(newEndpoint) ? undefined : conversation?.thread_id,
+        };
 
         const currentConvo = getDefaultConversation({
           /* target endpointType is necessary to avoid endpoint mixing */
-          conversation: {
-            ...(conversation ?? {}),
-            spec: null,
-            iconURL: null,
-            modelLabel: null,
-            endpointType: template.endpointType,
-          },
+          conversation: nextConversation,
           preset: template,
         });
 
@@ -273,9 +280,14 @@ export default function useSelectMention({
         template.spec = null;
         template.iconURL = null;
         template.modelLabel = null;
+        const nextConversation = {
+          ...(conversation ?? {}),
+          endpointType: template.endpointType,
+          thread_id: isAssistantsEndpoint(newEndpoint) ? undefined : conversation?.thread_id,
+        };
         const currentConvo = getDefaultConversation({
           /* target endpointType is necessary to avoid endpoint mixing */
-          conversation: { ...(conversation ?? {}), endpointType: template.endpointType },
+          conversation: nextConversation,
           preset: template,
           cleanInput: true,
         });

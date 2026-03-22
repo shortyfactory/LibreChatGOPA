@@ -67,6 +67,11 @@ export interface CodeInterpreterResource {
    * associated with the tool.
    */
   file_ids?: Array<string>;
+  /**
+   * Resolved file metadata when the assistant provider exposes it.
+   * Used by the UI to display human-friendly filenames for remote files.
+   */
+  files?: Array<File>;
 }
 
 export interface FileSearchResource {
@@ -77,6 +82,16 @@ export interface FileSearchResource {
    * the assistant.
    */
   vector_store_ids?: Array<string>;
+  /**
+   * Resolved file IDs from the attached vector store.
+   * Used by the UI to populate the knowledge section for remote assistants.
+   */
+  file_ids?: Array<string>;
+  /**
+   * Resolved file metadata for the attached vector store.
+   * Used by the UI to display human-friendly filenames for remote files.
+   */
+  files?: Array<File>;
 }
 
 /* Assistant types */

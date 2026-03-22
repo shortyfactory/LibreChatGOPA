@@ -22,12 +22,13 @@ export default function useSelectAssistant(endpoint: AssistantsEndpoint) {
         assistant_id: assistant.id,
         model: assistant.model,
         conversationId: 'new',
+        thread_id: undefined,
       };
 
       logger.log('conversation', 'Updating conversation with assistant', assistant);
       if (isAssistantsEndpoint(conversation?.endpoint)) {
         const currentConvo = getDefaultConversation({
-          conversation: { ...(conversation ?? {}) },
+          conversation: { ...(conversation ?? {}), thread_id: undefined },
           preset: template,
         });
         newConversation({

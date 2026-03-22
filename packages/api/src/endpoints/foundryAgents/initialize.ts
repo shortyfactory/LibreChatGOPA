@@ -22,7 +22,7 @@ function getCredentialCacheKey(): string {
   return `service-principal:${servicePrincipalConfig.tenantId}:${servicePrincipalConfig.clientId}`;
 }
 
-function getFoundryTokenCredential(): TokenCredential {
+export function getFoundryTokenCredential(): TokenCredential {
   const servicePrincipalConfig = getFoundryServicePrincipalConfig();
 
   if (!servicePrincipalConfig) {

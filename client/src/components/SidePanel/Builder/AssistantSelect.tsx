@@ -7,12 +7,14 @@ import {
   Capabilities,
   EModelEndpoint,
   LocalStorageKeys,
+  inferMimeType,
   isImageVisionTool,
   defaultAssistantFormValues,
 } from 'librechat-data-provider';
 import type {
   TPlugin,
   Assistant,
+  File as AssistantFile,
   AssistantDocument,
   AssistantsEndpoint,
   AssistantCreateParams,
@@ -40,6 +42,15 @@ const keys = new Set([
   'model',
   'append_current_datetime',
 ]);
+
+const createRemoteFileLookup = (files?: Array<AssistantFile>) =>
+  new Map(
+    (files ?? [])
+      .map((file) => [file.file_id || file.id, file] as const)
+      .filter(([file_id]) => Boolean(file_id)),
+  );
+
+const isNonEmptyString = (value: string | undefined): value is string => Boolean(value);
 
 export default function AssistantSelect({
   reset,
@@ -76,19 +87,40 @@ export default function AssistantSelect({
   const query = useListAssistantsQuery(endpoint, undefined, {
     select: (res) =>
       res.data.map((_assistant) => {
+        const retrievalFileIds = Array.from(
+          new Set(
+            [
+              ...(_assistant.file_ids ?? []),
+              ...(_assistant.tool_resources?.file_search?.file_ids ?? []),
+              ...(_assistant.tool_resources?.file_search?.files
+                ?.map((file) => file.file_id || file.id)
+                .filter(isNonEmptyString) ?? []),
+            ].filter(isNonEmptyString),
+          ),
+        );
         const source =
           endpoint === EModelEndpoint.assistants ? FileSources.openai : FileSources.azure;
         const assistant: TAssistantOption = {
           ..._assistant,
           label: _assistant.name ?? '',
           value: _assistant.id,
-          files: _assistant.file_ids ? ([] as Array<[string, ExtendedFile]>) : undefined,
+          files: retrievalFileIds.length ? ([] as Array<[string, ExtendedFile]>) : undefined,
           code_files: _assistant.tool_resources?.code_interpreter?.file_ids
             ? ([] as Array<[string, ExtendedFile]>)
             : undefined,
         };
+        const codeInterpreterFiles = createRemoteFileLookup(
+          _assistant.tool_resources?.code_interpreter?.files,
+        );
+        const fileSearchFiles = createRemoteFileLookup(
+          _assistant.tool_resources?.file_search?.files,
+        );
 
-        const handleFile = (file_id: string, list?: Array<[string, ExtendedFile]>) => {
+        const handleFile = (
+          file_id: string,
+          list?: Array<[string, ExtendedFile]>,
+          remoteFile?: AssistantFile,
+        ) => {
           const file = fileMap?.[file_id];
           if (file) {
             list?.push([
@@ -103,6 +135,19 @@ export default function AssistantSelect({
                 size: file.bytes,
                 preview: file.filepath,
                 progress: 1,
+                source,
+              },
+            ]);
+          } else if (remoteFile) {
+            list?.push([
+              file_id,
+              {
+                file_id,
+                type: inferMimeType(remoteFile.filename, ''),
+                filename: remoteFile.filename || file_id,
+                size: remoteFile.bytes || 1,
+                progress: 1,
+                filepath: endpoint,
                 source,
               },
             ]);
@@ -122,13 +167,15 @@ export default function AssistantSelect({
           }
         };
 
-        if (assistant.files && _assistant.file_ids) {
-          _assistant.file_ids.forEach((file_id) => handleFile(file_id, assistant.files));
+        if (assistant.files) {
+          retrievalFileIds.forEach((file_id) =>
+            handleFile(file_id, assistant.files, fileSearchFiles.get(file_id)),
+          );
         }
 
         if (assistant.code_files && _assistant.tool_resources?.code_interpreter?.file_ids) {
           _assistant.tool_resources.code_interpreter.file_ids.forEach((file_id) =>
-            handleFile(file_id, assistant.code_files),
+            handleFile(file_id, assistant.code_files, codeInterpreterFiles.get(file_id)),
           );
         }
 

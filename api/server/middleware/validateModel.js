@@ -1,5 +1,9 @@
 const { handleError } = require('@librechat/api');
-const { ViolationTypes } = require('librechat-data-provider');
+const {
+  ViolationTypes,
+  isAssistantsEndpoint,
+  resolveAssistantsConfigEndpoint,
+} = require('librechat-data-provider');
 const { getModelsConfig } = require('~/server/controllers/ModelController');
 const { logViolation } = require('~/cache');
 /**
@@ -11,7 +15,7 @@ const { logViolation } = require('~/cache');
  * @param {Function} next - The Express next function.
  */
 const validateModel = async (req, res, next) => {
-  const { model, endpoint } = req.body;
+  const { model, endpoint, endpointType } = req.body;
   if (!model) {
     return handleError(res, { text: 'Model not provided' });
   }
@@ -22,7 +26,10 @@ const validateModel = async (req, res, next) => {
     return handleError(res, { text: 'Models not loaded' });
   }
 
-  const availableModels = modelsConfig[endpoint];
+  const configEndpoint = isAssistantsEndpoint(endpoint)
+    ? resolveAssistantsConfigEndpoint(endpointType ?? endpoint)
+    : endpoint;
+  const availableModels = modelsConfig[configEndpoint];
   if (!availableModels) {
     return handleError(res, { text: 'Endpoint models not loaded' });
   }

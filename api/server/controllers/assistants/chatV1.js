@@ -893,7 +893,15 @@ const chatV1 = async (req, res) => {
     }
 
     if (response.run.status === RunStatus.IN_PROGRESS) {
-      processRun(true);
+      logger.warn(
+        '[/assistants/chat/] Unexpected `in_progress` status after run handling, retrying',
+      );
+      await processRun(true);
+    }
+
+    if (response.run.status === RunStatus.CANCELLED) {
+      logger.debug('[/assistants/chat/] Run cancelled after retry, handled by `abortRun`');
+      return res.end();
     }
 
     completedRun = response.run;

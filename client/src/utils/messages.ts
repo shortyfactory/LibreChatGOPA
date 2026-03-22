@@ -191,6 +191,28 @@ export const getMessageAriaLabel = (message: TMessage, localize: LocalizeFunctio
     : localize('com_endpoint_message');
 };
 
+export const resolveSubmissionThreadId = ({
+  isNewConversation,
+  targetParentMessage,
+  latestMessage,
+  currentMessages,
+}: {
+  isNewConversation: boolean;
+  targetParentMessage?: Pick<TMessage, 'thread_id'> | null;
+  latestMessage?: Pick<TMessage, 'thread_id'> | null;
+  currentMessages?: Array<Pick<TMessage, 'thread_id'>> | null;
+}): string | undefined => {
+  if (isNewConversation) {
+    return;
+  }
+
+  return (
+    targetParentMessage?.thread_id ??
+    latestMessage?.thread_id ??
+    currentMessages?.find((message) => message.thread_id)?.thread_id
+  );
+};
+
 /**
  * Creates initial content parts for dual message display with agent-based grouping.
  * Sets up primary and added agent content parts with agentId for column rendering.

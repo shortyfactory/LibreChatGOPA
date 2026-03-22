@@ -8,7 +8,6 @@ import {
   QueryKeys,
   ContentTypes,
   EModelEndpoint,
-  getEndpointField,
   isAgentsEndpoint,
   parseCompactConvo,
   replaceSpecialVars,
@@ -28,7 +27,12 @@ import type { SetterOrUpdater } from 'recoil';
 import type { TAskFunction, ExtendedFile } from '~/common';
 import useSetFilesToDelete from '~/hooks/Files/useSetFilesToDelete';
 import useGetSender from '~/hooks/Conversations/useGetSender';
-import { logger, createDualMessageContent } from '~/utils';
+import {
+  logger,
+  createDualMessageContent,
+  resolveSubmissionThreadId,
+  getConversationEndpointType,
+} from '~/utils';
 import store, { useGetEphemeralAgent } from '~/store';
 import useUserKey from '~/hooks/Input/useUserKey';
 import { useAuthContext } from '~/hooks';
@@ -149,7 +153,9 @@ export default function useChatFunctions({
       currentMessages,
     });
 
-    if (conversationId == Constants.NEW_CONVO) {
+    const isNewConversation = conversationId == Constants.NEW_CONVO;
+
+    if (isNewConversation) {
       parentMessageId = Constants.NO_PARENT;
       currentMessages = [];
       conversationId = null;
@@ -166,14 +172,20 @@ export default function useChatFunctions({
       (msg) => msg.messageId === targetParentMessageId,
     );
 
-    let thread_id = targetParentMessage?.thread_id ?? latestMessage?.thread_id;
-    if (thread_id == null) {
-      thread_id = currentMessages.find((message) => message.thread_id)?.thread_id;
-    }
+    const thread_id = resolveSubmissionThreadId({
+      isNewConversation,
+      targetParentMessage,
+      latestMessage,
+      currentMessages,
+    });
 
     const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
     const startupConfig = queryClient.getQueryData<TStartupConfig>([QueryKeys.startupConfig]);
-    const endpointType = getEndpointField(endpointsConfig, endpoint, 'type');
+    const endpointType = getConversationEndpointType({
+      endpoint,
+      endpointType: conversation?.endpointType,
+      endpointsConfig,
+    });
     const iconURL = conversation?.iconURL;
     const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, endpoint);
 

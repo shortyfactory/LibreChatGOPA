@@ -129,7 +129,7 @@ interface ConversationInitParams {
 }
 
 interface InitiatedTemplateResult {
-  template: Partial<t.TPreset>;
+  template: Partial<t.TConversation & t.TPreset>;
   shouldSwitch: boolean;
   isExistingConversation: boolean;
   isCurrentModular: boolean;
@@ -142,11 +142,15 @@ export function getConvoSwitchLogic(params: ConversationInitParams): InitiatedTe
   const { conversation, newEndpoint, endpointsConfig, modularChat = false } = params;
 
   const currentEndpoint = conversation?.endpoint;
-  const template: Partial<t.TPreset> = {
+  const template: Partial<t.TConversation & t.TPreset> = {
     ...conversation,
     endpoint: newEndpoint,
     conversationId: 'new',
   };
+
+  if (isAssistantsEndpoint(newEndpoint)) {
+    template.thread_id = undefined;
+  }
 
   // Reset agent_id if switching to a non-agents endpoint but template has a non-ephemeral agent_id
   if (
@@ -360,6 +364,19 @@ export function getIconEndpoint({
 }
 
 /** Gets the key to use for the default endpoint iconURL, as defined by the custom config */
+export function getConversationEndpointType({
+  endpoint,
+  endpointType,
+  endpointsConfig,
+}: {
+  endpoint?: string | null;
+  endpointsConfig?: t.TEndpointsConfig | null;
+  endpointType?: string | null;
+}) {
+  return endpointType ?? getEndpointField(endpointsConfig, endpoint, 'type') ?? undefined;
+}
+
+/** Gets the key to use for the default endpoint iconURL, as defined by the custom config */
 export function getIconKey({
   endpoint,
   endpointType: _eType,
@@ -371,7 +388,12 @@ export function getIconKey({
   endpointType?: string | null;
   endpointIconURL?: string;
 }): keyof IconsRecord {
-  const endpointType = _eType ?? getEndpointField(endpointsConfig, endpoint, 'type') ?? '';
+  const endpointType =
+    getConversationEndpointType({
+      endpoint,
+      endpointType: _eType,
+      endpointsConfig,
+    }) ?? '';
   const endpointIconURL = iconURL ?? getEndpointField(endpointsConfig, endpoint, 'iconURL') ?? '';
   if (endpointIconURL && EModelEndpoint[endpointIconURL] != null) {
     return endpointIconURL;

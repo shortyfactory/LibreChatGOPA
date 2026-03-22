@@ -1,5 +1,4 @@
 const { klona } = require('klona');
-const { sleep } = require('@librechat/agents');
 const { sendEvent } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const {
@@ -16,8 +15,6 @@ const { retrieveAndProcessFile } = require('~/server/services/Files/process');
 const { processRequiredActions } = require('~/server/services/ToolService');
 const { RunManager, waitForRun } = require('~/server/services/Runs');
 const { processMessages } = require('~/server/services/Threads');
-const { createOnProgress } = require('~/server/utils');
-const { TextStream } = require('~/app/clients');
 
 /**
  * Sorts, processes, and flattens messages to a single string.
@@ -158,6 +155,97 @@ function hasToolCallChanged(previousCall, currentCall) {
   return JSON.stringify(previousCall) !== JSON.stringify(currentCall);
 }
 
+function getNextContentIndex(content = []) {
+  return content.reduce((nextIndex, part, index) => (part ? index + 1 : nextIndex), 0);
+}
+
+function getUniqueMessageFiles(messages = []) {
+  const files = new Map();
+
+  for (const message of messages) {
+    for (const file of message.files ?? []) {
+      if (!file?.file_id || files.has(file.file_id)) {
+        continue;
+      }
+
+      files.set(file.file_id, file);
+    }
+  }
+
+  return Array.from(files.values());
+}
+
+async function getRunAssistantMessages({ openai, thread_id, run_id }) {
+  const { data } = await openai.beta.threads.messages.list(thread_id, defaultOrderQuery);
+
+  return data
+    .filter((message) => message.role === 'assistant' && message.run_id === run_id)
+    .sort((a, b) => a.created_at - b.created_at);
+}
+
+function mergeAssistantMessages(...messageGroups) {
+  const messagesById = new Map();
+
+  for (const group of messageGroups) {
+    for (const message of group ?? []) {
+      if (!message?.id) {
+        continue;
+      }
+
+      messagesById.set(message.id, message);
+    }
+  }
+
+  return Array.from(messagesById.values()).sort((a, b) => a.created_at - b.created_at);
+}
+
+async function finalizeAssistantResponse({ openai, thread_id, run_id, accumulatedMessages = [] }) {
+  const retrievedMessages = await getRunAssistantMessages({ openai, thread_id, run_id });
+  const messages = mergeAssistantMessages(accumulatedMessages, retrievedMessages);
+  const result = await processMessages({
+    openai,
+    client: openai,
+    messages,
+  });
+
+  const text = result.text.trim();
+  openai.responseMessage.files = getUniqueMessageFiles(result.messages);
+  openai.responseText = text;
+
+  if (!text.length) {
+    return {
+      messages: result.messages,
+      text,
+    };
+  }
+
+  const textIndex = getNextContentIndex(openai.responseMessage.content);
+  const textContent = {
+    value: text,
+  };
+
+  openai.responseMessage.content[textIndex] = {
+    type: ContentTypes.TEXT,
+    [ContentTypes.TEXT]: textContent,
+  };
+
+  sendEvent(openai.res, {
+    index: textIndex,
+    type: ContentTypes.TEXT,
+    messageId: openai.responseMessage.messageId,
+    thread_id,
+    conversationId: openai.responseMessage.conversationId,
+    [ContentTypes.TEXT]: textContent,
+  });
+
+  openai.index = Math.max(openai.index, textIndex + 1);
+
+  return {
+    messages: result.messages,
+    text,
+  };
+}
+
 /**
  * Creates a handler function for steps in progress, specifically for
  * processing messages and managing seen completed messages.
@@ -169,7 +257,6 @@ function hasToolCallChanged(previousCall, currentCall) {
  */
 function createInProgressHandler(openai, thread_id, messages) {
   openai.index = 0;
-  openai.mappedOrder = new Map();
   openai.seenToolCalls = new Map();
   openai.processedFileIds = new Set();
   openai.completeToolCallSteps = new Set();
@@ -192,14 +279,6 @@ function createInProgressHandler(openai, thread_id, messages) {
         // If the tool call isn't new and hasn't changed
         if (previousCall && !hasToolCallChanged(previousCall, toolCall)) {
           continue;
-        }
-
-        let toolCallIndex = openai.mappedOrder.get(toolCall.id);
-        if (toolCallIndex === undefined) {
-          // New tool call
-          toolCallIndex = openai.index;
-          openai.mappedOrder.set(toolCall.id, openai.index);
-          openai.index++;
         }
 
         if (step.status === StepStatus.IN_PROGRESS) {
@@ -264,12 +343,6 @@ function createInProgressHandler(openai, thread_id, messages) {
           continue;
         }
 
-        openai.addContentData({
-          [ContentTypes.TOOL_CALL]: toolCall,
-          index: toolCallIndex,
-          type: ContentTypes.TOOL_CALL,
-        });
-
         // Update the stored tool call
         openai.seenToolCalls.set(toolCall.id, toolCall);
       }
@@ -286,44 +359,6 @@ function createInProgressHandler(openai, thread_id, messages) {
         return;
       }
       messages.push(message);
-
-      let messageIndex = openai.mappedOrder.get(step.id);
-      if (messageIndex === undefined) {
-        // New message
-        messageIndex = openai.index;
-        openai.mappedOrder.set(step.id, openai.index);
-        openai.index++;
-      }
-
-      const result = await processMessages({ openai, client: openai, messages: [message] });
-      openai.addContentData({
-        [ContentTypes.TEXT]: { value: result.text },
-        type: ContentTypes.TEXT,
-        index: messageIndex,
-      });
-
-      // Create the Factory Function to stream the message
-      const { onProgress: progressCallback } = createOnProgress({
-        // todo: add option to save partialText to db
-        // onProgress: () => {},
-      });
-
-      // This creates a function that attaches all of the parameters
-      // specified here to each SSE message generated by the TextStream
-      const onProgress = progressCallback({
-        res: openai.res,
-        index: messageIndex,
-        messageId: openai.responseMessage.messageId,
-        conversationId: openai.responseMessage.conversationId,
-        type: ContentTypes.TEXT,
-        thread_id,
-      });
-
-      // Create a small buffer before streaming begins
-      await sleep(500);
-
-      const stream = new TextStream(result.text, { delay: 9 });
-      await stream.processTextStream(onProgress);
     }
   }
 
@@ -377,20 +412,26 @@ async function runAssistant({
       }
 
       const resolved = await Promise.all(promises);
-      const finalSteps = filterSteps(steps.concat(resolved));
+      const finalSteps = filterSteps(steps.concat(resolved)).sort(
+        (a, b) => a.created_at - b.created_at,
+      );
 
-      if (step.type === StepTypes.MESSAGE_CREATION) {
-        const incompleteToolCallSteps = finalSteps.filter(
-          (s) => s && s.type === StepTypes.TOOL_CALLS && !openai.completeToolCallSteps.has(s.id),
-        );
-        for (const incompleteToolCallStep of incompleteToolCallSteps) {
-          await in_progress({ step: incompleteToolCallStep });
+      for (const finalStep of finalSteps) {
+        if (
+          finalStep?.type === StepTypes.TOOL_CALLS &&
+          !openai.completeToolCallSteps.has(finalStep.id)
+        ) {
+          await in_progress({ step: finalStep });
+          continue;
+        }
+
+        if (finalStep?.type === StepTypes.MESSAGE_CREATION) {
+          await in_progress({ step: finalStep });
         }
       }
-      await in_progress({ step });
+
       // const res = resolved.shift();
       // messages = messages.concat(res.data.filter((msg) => msg && msg.run_id === run_id));
-      resolved.push(step);
       /* Note: no issues without deep cloning, but it's safer to do so */
       steps = klona(finalSteps);
     },
@@ -411,15 +452,19 @@ async function runAssistant({
   });
 
   if (!run.required_action) {
-    // const { messages: sortedMessages, text } = await processMessages(openai, messages);
-    // return { run, steps, messages: sortedMessages, text };
-    const sortedMessages = messages.sort((a, b) => a.created_at - b.created_at);
+    const finalResponse = await finalizeAssistantResponse({
+      openai,
+      thread_id,
+      run_id: run.id,
+      accumulatedMessages: messages,
+    });
+
     return {
       run,
       steps,
-      messages: sortedMessages,
+      messages: finalResponse.messages,
       finalMessage: openai.responseMessage,
-      text: openai.responseText,
+      text: finalResponse.text,
     };
   }
 
