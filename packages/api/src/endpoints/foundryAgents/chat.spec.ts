@@ -1,6 +1,7 @@
 import type { AgentThreadCreationOptions, ToolDefinitionUnion } from '@azure/ai-agents';
 
 import {
+  buildFoundryMessageAttachments,
   buildFoundryRunAdditionalInstructions,
   buildFoundryRunOptions,
   ensureFoundryThread,
@@ -136,12 +137,62 @@ describe('buildFoundryRunAdditionalInstructions', () => {
 
     expect(instructions).toContain('Existing instructions');
     expect(instructions).toContain('already available to your tools');
+    expect(instructions).toContain('All available files for this conversation:');
     expect(instructions).toContain('Code interpreter files:');
     expect(instructions).toContain('Knowledge files:');
     expect(instructions).toContain('- 28MICHEL_FR_en-US_en-GB.pdf');
     expect(instructions).toContain('- GIZ_Copilot_Agent_Overview_English.docx');
+    expect(instructions).toContain('every available file exactly once');
+    expect(instructions).toContain('do not invent generic placeholders');
     expect(instructions).toContain('Do not say that you cannot see attached files');
     expect(instructions).toContain('never expose internal file identifiers');
+  });
+});
+
+describe('buildFoundryMessageAttachments', () => {
+  it('does not attach assistant-owned tool files to the message when the user did not upload files', async () => {
+    await expect(
+      buildFoundryMessageAttachments({
+        assistant: {
+          id: 'asst_1',
+          tools: [{ type: 'code_interpreter' }],
+          toolResources: {
+            codeInterpreter: {
+              fileIds: ['file_ci_1'],
+            },
+          },
+        } as never,
+        projectAgent: null,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it('attaches only explicit user file ids with the enabled tools', async () => {
+    const attachments = await buildFoundryMessageAttachments({
+      assistant: {
+        id: 'asst_1',
+        tools: [{ type: 'code_interpreter' }, { type: 'file_search' }],
+        toolResources: {
+          codeInterpreter: {
+            fileIds: ['assistant_file_1'],
+          },
+          fileSearch: {
+            vectorStoreIds: ['vs_1'],
+          },
+        },
+      } as never,
+      attachments: [{ file_id: 'user_file_1' }],
+      projectAgent: null,
+    });
+
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].fileId).toBe('user_file_1');
+    expect(attachments[0].tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'code_interpreter' }),
+        expect.objectContaining({ type: 'file_search' }),
+      ]),
+    );
   });
 });
 

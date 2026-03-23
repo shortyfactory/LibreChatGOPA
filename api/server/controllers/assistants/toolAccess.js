@@ -1,17 +1,229 @@
 const { logger } = require('@librechat/data-schemas');
-const { Tools, ToolCallTypes } = require('librechat-data-provider');
+const {
+  Tools,
+  ToolCallTypes,
+  EModelEndpoint,
+  AzureAssistantsOldEndpoint,
+} = require('librechat-data-provider');
+
+const isLegacyAzureAssistantsEndpoint = (endpoint) =>
+  endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
 
 function normalizeAssistantFileIds(fileIds = []) {
   return Array.from(
-    new Set(
-      fileIds.filter((fileId) => typeof fileId === 'string' && fileId.trim().length > 0),
-    ),
+    new Set(fileIds.filter((fileId) => typeof fileId === 'string' && fileId.trim().length > 0)),
   );
 }
 
 function normalizeInstruction(instruction) {
   const normalizedInstruction = instruction?.trim();
   return normalizedInstruction ? normalizedInstruction : undefined;
+}
+
+function mergeAssistantFileIds(...fileIdGroups) {
+  return normalizeAssistantFileIds(fileIdGroups.flat());
+}
+
+function getAssistantFileReferenceId(file) {
+  const fileId = file?.file_id ?? file?.id;
+  return typeof fileId === 'string' ? fileId : null;
+}
+
+function getAssistantToolKey(tool) {
+  if (!tool || typeof tool !== 'object') {
+    return null;
+  }
+
+  if (tool.type === 'function') {
+    const functionName = tool.function?.name;
+    return typeof functionName === 'string' && functionName.length > 0
+      ? `function:${functionName}`
+      : 'function';
+  }
+
+  return typeof tool.type === 'string' && tool.type.length > 0 ? `type:${tool.type}` : null;
+}
+
+function mergeAssistantTools(primaryTools = [], fallbackTools = []) {
+  const mergedTools = [];
+  const seenTools = new Set();
+
+  for (const tool of [...primaryTools, ...fallbackTools]) {
+    const toolKey = getAssistantToolKey(tool);
+
+    if (!toolKey || seenTools.has(toolKey)) {
+      continue;
+    }
+
+    seenTools.add(toolKey);
+    mergedTools.push(tool);
+  }
+
+  return mergedTools;
+}
+
+function mergeAssistantFileSearchResources(primaryResource = {}, fallbackResource = {}) {
+  const vector_store_ids = mergeAssistantFileIds(
+    fallbackResource?.vector_store_ids ?? [],
+    primaryResource?.vector_store_ids ?? [],
+  );
+  const file_ids = mergeAssistantFileIds(
+    fallbackResource?.file_ids ?? [],
+    primaryResource?.file_ids ?? [],
+  );
+  const files = [...(fallbackResource?.files ?? []), ...(primaryResource?.files ?? [])];
+
+  const mergedResource = {
+    ...(fallbackResource ?? {}),
+    ...(primaryResource ?? {}),
+  };
+
+  if (vector_store_ids.length > 0) {
+    mergedResource.vector_store_ids = vector_store_ids;
+  }
+
+  if (file_ids.length > 0) {
+    mergedResource.file_ids = file_ids;
+  }
+
+  if (files.length > 0) {
+    mergedResource.files = files;
+  }
+
+  return Object.keys(mergedResource).length > 0 ? mergedResource : undefined;
+}
+
+async function findAssistantInList({ openai, assistantId }) {
+  const listAssistants = openai?.beta?.assistants?.list;
+
+  if (!assistantId || typeof listAssistants !== 'function') {
+    return null;
+  }
+
+  let after;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await listAssistants.call(openai.beta.assistants, {
+      limit: 100,
+      order: 'desc',
+      ...(after ? { after } : {}),
+    });
+    const body = response?.body ?? response;
+    const assistants = Array.isArray(body?.data) ? body.data : [];
+    const assistant = assistants.find((candidate) => candidate?.id === assistantId);
+
+    if (assistant) {
+      return assistant;
+    }
+
+    after = body?.last_id;
+    hasMore = body?.has_more === true && typeof after === 'string' && after.length > 0;
+  }
+
+  return null;
+}
+
+async function hydrateAssistantLegacyConfig({ openai, assistant = {} }) {
+  if (!assistant?.id) {
+    return assistant;
+  }
+
+  const listedAssistant = await findAssistantInList({
+    openai,
+    assistantId: assistant.id,
+  });
+
+  if (!listedAssistant) {
+    return assistant;
+  }
+
+  const file_ids = mergeAssistantFileIds(listedAssistant.file_ids ?? [], assistant.file_ids ?? []);
+  const file_search = mergeAssistantFileSearchResources(
+    assistant.tool_resources?.file_search,
+    listedAssistant.tool_resources?.file_search,
+  );
+  const code_interpreter =
+    assistant.tool_resources?.code_interpreter ?? listedAssistant.tool_resources?.code_interpreter;
+  const tool_resources = {
+    ...(listedAssistant.tool_resources ?? {}),
+    ...(assistant.tool_resources ?? {}),
+    ...(file_search ? { file_search } : {}),
+    ...(code_interpreter ? { code_interpreter } : {}),
+  };
+
+  return {
+    ...listedAssistant,
+    ...assistant,
+    tools: mergeAssistantTools(assistant.tools ?? [], listedAssistant.tools ?? []),
+    ...(file_ids.length > 0 ? { file_ids } : {}),
+    ...(Object.keys(tool_resources).length > 0 ? { tool_resources } : {}),
+  };
+}
+
+async function listAssistantFileReferences({ openai, assistantId }) {
+  const listFiles = openai?.beta?.assistants?.files?.list;
+
+  if (!assistantId || typeof listFiles !== 'function') {
+    return [];
+  }
+
+  try {
+    const response = listFiles.call(openai.beta.assistants.files, assistantId);
+
+    if (response && typeof response[Symbol.asyncIterator] === 'function') {
+      const files = [];
+
+      for await (const file of response) {
+        files.push(file);
+      }
+
+      return files;
+    }
+
+    const resolvedResponse = await response;
+    const files = resolvedResponse?.data ?? resolvedResponse?.body?.data;
+
+    return Array.isArray(files) ? files : [];
+  } catch (error) {
+    logger.warn('[assistantToolAccess] Failed to list assistant files', {
+      assistant_id: assistantId,
+      error: error?.message ?? String(error),
+    });
+    return [];
+  }
+}
+
+async function hydrateAssistantLegacyFileIds({ openai, assistant = {} }) {
+  const normalizedFileIds = normalizeAssistantFileIds(assistant.file_ids);
+
+  if (normalizedFileIds.length > 0) {
+    if (normalizedFileIds.length === (assistant.file_ids?.length ?? 0)) {
+      return assistant;
+    }
+
+    return {
+      ...assistant,
+      file_ids: normalizedFileIds,
+    };
+  }
+
+  const assistantFiles = await listAssistantFileReferences({
+    openai,
+    assistantId: assistant.id,
+  });
+  const legacyFileIds = normalizeAssistantFileIds(
+    assistantFiles.map((file) => getAssistantFileReferenceId(file)),
+  );
+
+  if (legacyFileIds.length === 0) {
+    return assistant;
+  }
+
+  return {
+    ...assistant,
+    file_ids: legacyFileIds,
+  };
 }
 
 function hasResolvedAssistantFilename(file) {
@@ -74,9 +286,15 @@ async function listVectorStoreFiles({ openai, vector_store_id, fileCache }) {
       filter: 'completed',
       order: 'desc',
     })) {
+      const fileReferenceId = vectorStoreFile?.file_id ?? vectorStoreFile?.id;
+
+      if (!fileReferenceId) {
+        continue;
+      }
+
       const file = await getAssistantFileMetadata({
         openai,
-        file_id: vectorStoreFile.id,
+        file_id: fileReferenceId,
         fileCache,
       });
 
@@ -96,14 +314,18 @@ async function listVectorStoreFiles({ openai, vector_store_id, fileCache }) {
 }
 
 async function getAssistantAvailableToolFiles({ openai, assistant = {}, availability }) {
+  const hydratedAssistant = await hydrateAssistantLegacyFileIds({
+    openai,
+    assistant,
+  });
   const fileCache = new Map();
-  const fileSearchResource = assistant.tool_resources?.file_search;
+  const fileSearchResource = hydratedAssistant.tool_resources?.file_search;
   const codeInterpreterFileIds = availability.hasCodeInterpreter
-    ? normalizeAssistantFileIds(assistant.tool_resources?.code_interpreter?.file_ids)
+    ? normalizeAssistantFileIds(hydratedAssistant.tool_resources?.code_interpreter?.file_ids)
     : [];
   const directKnowledgeFileIds = availability.hasFileSearch
     ? normalizeAssistantFileIds([
-        ...(assistant.file_ids ?? []),
+        ...(hydratedAssistant.file_ids ?? []),
         ...(fileSearchResource?.file_ids ?? []),
       ])
     : [];
@@ -171,8 +393,11 @@ function buildAssistantRunFileInstructions(availableToolFiles = []) {
 
   const codeInterpreterFiles = [];
   const knowledgeFiles = [];
+  const allFiles = [];
 
   for (const file of availableToolFiles) {
+    allFiles.push(file);
+
     if (file.source === Tools.code_interpreter) {
       codeInterpreterFiles.push(file);
       continue;
@@ -184,6 +409,13 @@ function buildAssistantRunFileInstructions(availableToolFiles = []) {
   }
 
   const sections = [];
+
+  sections.push(
+    [
+      'All available files for this conversation:',
+      ...allFiles.map((file) => `- ${file.filename}`),
+    ].join('\n'),
+  );
 
   if (codeInterpreterFiles.length > 0) {
     sections.push(
@@ -211,9 +443,29 @@ function buildAssistantRunFileInstructions(availableToolFiles = []) {
     'The following files are already available to your tools for this conversation.',
     'Do not say that you cannot see attached files and do not ask the user to upload them again unless they are truly unavailable.',
     'Use these files directly when the user asks to summarize, analyze, compare, extract, translate, or list the attached files.',
+    'When the user asks for attached files, joint files, available files, or asks how many files are available, you must return one complete list that includes both code interpreter files and knowledge or file search files.',
+    'Do not omit knowledge or file search documents just because they come from a vector store or assistant knowledge instead of direct message attachments.',
     'Refer to the files by their filenames only, and never expose internal file identifiers in your answer.',
     ...sections,
   ].join('\n\n');
+}
+
+function buildAssistantRunTools({ assistant = {}, availability, endpoint }) {
+  const tools = assistant.tools ?? [];
+
+  if (!availability?.hasFileSearch || !isLegacyAzureAssistantsEndpoint(endpoint)) {
+    return tools;
+  }
+
+  const hasKnowledgeTool = tools.some(
+    (tool) => tool?.type === Tools.file_search || tool?.type === Tools.retrieval,
+  );
+
+  if (hasKnowledgeTool) {
+    return tools;
+  }
+
+  return mergeAssistantTools(tools, [{ type: Tools.retrieval }]);
 }
 
 function getAssistantToolAvailability(assistant = {}) {
@@ -233,7 +485,10 @@ function getAssistantToolAvailability(assistant = {}) {
     hasCodeInterpreterFiles: codeInterpreterFileIds.length > 0,
     hasAssistantFileIds: assistantFileIds.length > 0,
     hasKnowledgeFiles:
-      assistantFileIds.length > 0 || fileSearchFileIds.length > 0 || vectorStoreIds.length > 0,
+      assistantFileIds.length > 0 ||
+      fileSearchFileIds.length > 0 ||
+      vectorStoreIds.length > 0 ||
+      (fileSearchResource?.files?.length ?? 0) > 0,
   };
 }
 
@@ -283,7 +538,11 @@ function buildRuntimeAssistantPayload({ assistant = {}, availability, userId, en
     name: assistant.name,
     description: assistant.description,
     instructions: assistant.instructions,
-    tools: assistant.tools ?? [],
+    tools: buildAssistantRunTools({
+      assistant,
+      availability,
+      endpoint,
+    }),
     metadata: {
       ...(assistant.metadata ?? {}),
       author: userId,
@@ -321,11 +580,15 @@ function getUnavailableToolInstructions({
   return instructions.join('\n');
 }
 
-function applyAssistantRunToolAccess({ assistant, body }) {
+function applyAssistantRunToolAccess({ assistant, body, endpoint }) {
   const availability = getAssistantToolAvailability(assistant);
   const unavailableToolInstructions = getUnavailableToolInstructions(availability);
 
-  body.tools = assistant?.tools ?? [];
+  body.tools = buildAssistantRunTools({
+    assistant,
+    availability,
+    endpoint,
+  });
 
   if (!availability.hasFileSearch && availability.hasAssistantFileIds) {
     body.file_ids = [];
@@ -357,7 +620,10 @@ async function applyAssistantRunFileNameContext({ openai, assistant, availabilit
     return availableToolFiles;
   }
 
-  body.additional_instructions = [normalizeInstruction(body.additional_instructions), fileInstructions]
+  body.additional_instructions = [
+    normalizeInstruction(body.additional_instructions),
+    fileInstructions,
+  ]
     .filter(Boolean)
     .join('\n\n');
 
@@ -371,5 +637,7 @@ module.exports = {
   buildAssistantAttachmentTools,
   buildRuntimeAssistantPayload,
   getAssistantToolAvailability,
+  hydrateAssistantLegacyConfig,
+  hydrateAssistantLegacyFileIds,
   requiresTemporaryAssistant,
 };

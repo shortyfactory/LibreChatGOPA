@@ -52,6 +52,8 @@ const {
   applyAssistantRunToolAccess,
   buildAssistantAttachmentTools,
   buildRuntimeAssistantPayload,
+  hydrateAssistantLegacyConfig,
+  hydrateAssistantLegacyFileIds,
   requiresTemporaryAssistant,
 } = require('~/server/controllers/assistants/toolAccess');
 const { getOpenAIClient } = require('./helpers');
@@ -655,9 +657,18 @@ const chatV1 = async (req, res) => {
       clientTimestamp,
     });
     assistantConfig = await openai.beta.assistants.retrieve(assistant_id);
+    assistantConfig = await hydrateAssistantLegacyConfig({
+      openai,
+      assistant: assistantConfig,
+    });
+    assistantConfig = await hydrateAssistantLegacyFileIds({
+      openai,
+      assistant: assistantConfig,
+    });
     assistantToolAvailability = applyAssistantRunToolAccess({
       assistant: assistantConfig,
       body,
+      endpoint,
     });
     await applyAssistantRunFileNameContext({
       openai,

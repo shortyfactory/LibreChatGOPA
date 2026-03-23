@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
+  EToolResources,
   mergeFileConfig,
   retrievalMimeTypes,
   getEndpointFileConfig,
@@ -24,6 +25,10 @@ const CodeInterpreterFiles = ({ children }: { children: React.ReactNode }) => {
     </div>
   );
 };
+
+const isRetrievalAccessibleFile = (file: ExtendedFile) =>
+  file.tool_resource === EToolResources.file_search ||
+  retrievalMimeTypes.some((regex) => regex.test(file.type ?? ''));
 
 export default function Knowledge({
   endpoint,
@@ -95,9 +100,7 @@ export default function Knowledge({
           setFilesLoading={setFilesLoading}
           assistant_id={assistant_id}
           readOnly={readOnly}
-          fileFilter={(file: ExtendedFile) =>
-            retrievalMimeTypes.some((regex) => regex.test(file.type ?? ''))
-          }
+          fileFilter={isRetrievalAccessibleFile}
           Wrapper={({ children }) => <div className="flex flex-wrap gap-2">{children}</div>}
         />
         <FileRow
@@ -106,9 +109,7 @@ export default function Knowledge({
           setFilesLoading={setFilesLoading}
           assistant_id={assistant_id}
           readOnly={readOnly}
-          fileFilter={(file: ExtendedFile) =>
-            !retrievalMimeTypes.some((regex) => regex.test(file.type ?? ''))
-          }
+          fileFilter={(file: ExtendedFile) => !isRetrievalAccessibleFile(file)}
           Wrapper={CodeInterpreterFiles}
         />
         <div>

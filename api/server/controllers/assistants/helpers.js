@@ -145,9 +145,15 @@ const listVectorStoreFiles = async ({ openai, vector_store_id, fileCache }) => {
       filter: 'completed',
       order: 'desc',
     })) {
+      const fileReferenceId = vectorStoreFile?.file_id ?? vectorStoreFile?.id;
+
+      if (!fileReferenceId) {
+        continue;
+      }
+
       const file = await getAssistantFileMetadata({
         openai,
-        file_id: vectorStoreFile.id,
+        file_id: fileReferenceId,
         fileCache,
       });
 

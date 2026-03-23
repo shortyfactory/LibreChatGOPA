@@ -244,6 +244,10 @@ export function buildFoundryRunAdditionalInstructions({
   );
   const fileSearchFiles = availableToolFiles.filter((file) => file.source === 'file_search');
   const sections = [
+    [
+      'All available files for this conversation:',
+      ...availableToolFiles.map((file) => `- ${file.filename}`),
+    ].join('\n'),
     codeInterpreterFiles.length > 0
       ? [
           `${getFoundrySourceLabel('code_interpreter')}:`,
@@ -261,6 +265,8 @@ export function buildFoundryRunAdditionalInstructions({
     'The following files are already available to your tools for this conversation.',
     'Do not say that you cannot see attached files and do not ask the user to upload them again unless they are truly unavailable.',
     'Use these files directly when the user asks to summarize, analyze, compare, extract, or translate the attached documents.',
+    'When the user asks for attached files, joint files, available files, or asks how many files are available, you must return one complete list that includes every available file exactly once.',
+    'If a filename is available above, use that filename exactly and do not invent generic placeholders such as "File 1".',
     'Refer to the files by their filenames only, and never expose internal file identifiers in your answer.',
     ...sections,
   ].join('\n\n');
@@ -411,42 +417,16 @@ function upsertFoundryMessageAttachment(
   attachmentsByFileId.set(fileId, attachmentTools);
 }
 
-async function listFoundryVectorStoreFileIds({
-  client,
-  vectorStoreId,
-}: {
-  client: FoundryAgentsClient;
-  vectorStoreId: string;
-}): Promise<string[]> {
-  const fileIds: string[] = [];
-
-  for await (const vectorStoreFile of client.vectorStoreFiles.list(vectorStoreId)) {
-    if (vectorStoreFile.status !== 'completed' || !vectorStoreFile.id?.trim()) {
-      continue;
-    }
-
-    fileIds.push(vectorStoreFile.id);
-  }
-
-  return normalizeFoundryChatFileIds(fileIds);
-}
-
-async function buildFoundryMessageAttachments({
-  client,
+export async function buildFoundryMessageAttachments({
   assistant,
   attachments,
   projectAgent,
 }: {
-  client: FoundryAgentsClient;
   assistant: Agent;
   attachments?: Array<{ file_id?: string | null }> | null;
   projectAgent: FoundryProjectAgent | null;
 }): Promise<MessageAttachment[]> {
   const projectAgentTools = extractFoundryProjectToolDefinitionTools(projectAgent);
-  const codeInterpreterFileIds =
-    extractFoundryProjectCodeInterpreterFileIds(projectAgentTools).length > 0
-      ? extractFoundryProjectCodeInterpreterFileIds(projectAgentTools)
-      : (assistant.toolResources?.codeInterpreter?.fileIds ?? []);
   const fileSearchVectorStoreIds =
     extractFoundryProjectFileSearchVectorStoreIds(projectAgentTools).length > 0
       ? extractFoundryProjectFileSearchVectorStoreIds(projectAgentTools)
@@ -454,6 +434,10 @@ async function buildFoundryMessageAttachments({
   const explicitFileIds = normalizeFoundryChatFileIds(
     (attachments ?? []).map((attachment) => attachment?.file_id),
   );
+  const codeInterpreterFileIds =
+    extractFoundryProjectCodeInterpreterFileIds(projectAgentTools).length > 0
+      ? extractFoundryProjectCodeInterpreterFileIds(projectAgentTools)
+      : (assistant.toolResources?.codeInterpreter?.fileIds ?? []);
   const hasCodeInterpreter =
     projectAgentTools.some((tool) => tool.type === 'code_interpreter') ||
     assistant.tools.some((tool) => tool.type === 'code_interpreter') ||
@@ -463,27 +447,6 @@ async function buildFoundryMessageAttachments({
     assistant.tools.some((tool) => tool.type === 'file_search') ||
     fileSearchVectorStoreIds.length > 0;
   const attachmentsByFileId = new Map<string, Map<string, MessageAttachmentToolDefinition>>();
-
-  for (const fileId of codeInterpreterFileIds) {
-    upsertFoundryMessageAttachment(attachmentsByFileId, fileId, 'code_interpreter');
-  }
-
-  if (hasFileSearch) {
-    const vectorStoreFileIds = (
-      await Promise.all(
-        fileSearchVectorStoreIds.map((vectorStoreId) =>
-          listFoundryVectorStoreFileIds({
-            client,
-            vectorStoreId,
-          }),
-        ),
-      )
-    ).flat();
-
-    for (const fileId of vectorStoreFileIds) {
-      upsertFoundryMessageAttachment(attachmentsByFileId, fileId, 'file_search');
-    }
-  }
 
   for (const fileId of explicitFileIds) {
     if (hasCodeInterpreter) {
@@ -536,7 +499,6 @@ export async function chatWithFoundryAgent({
     threadCreationOptions,
   });
   const messageAttachments = await buildFoundryMessageAttachments({
-    client,
     assistant,
     attachments,
     projectAgent,

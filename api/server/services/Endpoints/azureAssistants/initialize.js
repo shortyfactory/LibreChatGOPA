@@ -14,6 +14,16 @@ class Files {
     this._client = client;
   }
   /**
+   * Returns a list of assistant files.
+   */
+  list(assistantId, query, options) {
+    return this._client.get(`/assistants/${assistantId}/files`, {
+      query,
+      ...options,
+      headers: { 'OpenAI-Beta': 'assistants=v1', ...options?.headers },
+    });
+  }
+  /**
    * Create an assistant file by attaching a
    * [File](https://platform.openai.com/docs/api-reference/files) to an
    * [assistant](https://platform.openai.com/docs/api-reference/assistants).

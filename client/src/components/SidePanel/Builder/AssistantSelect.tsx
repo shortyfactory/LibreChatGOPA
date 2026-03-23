@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { SelectDropDown } from '@librechat/client';
 import {
   Tools,
+  EToolResources,
   FileSources,
   Capabilities,
   EModelEndpoint,
@@ -117,6 +118,14 @@ export default function AssistantSelect({
         const fileSearchFiles = createRemoteFileLookup(
           _assistant.tool_resources?.file_search?.files,
         );
+        const fileSearchFileIds = new Set(
+          [
+            ...(_assistant.tool_resources?.file_search?.file_ids ?? []),
+            ...(_assistant.tool_resources?.file_search?.files
+              ?.map((file) => file.file_id || file.id)
+              .filter(isNonEmptyString) ?? []),
+          ].filter(isNonEmptyString),
+        );
 
         const handleFile = (
           file_id: string,
@@ -138,6 +147,9 @@ export default function AssistantSelect({
                 preview: file.filepath,
                 progress: 1,
                 source,
+                ...(fileSearchFileIds.has(file_id)
+                  ? { tool_resource: EToolResources.file_search }
+                  : {}),
               },
             ]);
           } else if (remoteFile) {
@@ -151,6 +163,9 @@ export default function AssistantSelect({
                 progress: 1,
                 filepath: endpoint,
                 source,
+                ...(fileSearchFileIds.has(file_id)
+                  ? { tool_resource: EToolResources.file_search }
+                  : {}),
               },
             ]);
           } else {
@@ -164,6 +179,9 @@ export default function AssistantSelect({
                 progress: 1,
                 filepath: endpoint,
                 source,
+                ...(fileSearchFileIds.has(file_id)
+                  ? { tool_resource: EToolResources.file_search }
+                  : {}),
               },
             ]);
           }

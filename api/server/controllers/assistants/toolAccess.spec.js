@@ -5,6 +5,8 @@ const {
   buildAssistantAttachmentTools,
   buildRuntimeAssistantPayload,
   getAssistantToolAvailability,
+  hydrateAssistantLegacyConfig,
+  hydrateAssistantLegacyFileIds,
   requiresTemporaryAssistant,
 } = require('./toolAccess');
 
@@ -103,6 +105,33 @@ describe('assistant tool access helpers', () => {
     expect(body.additional_instructions).toContain('Knowledge retrieval is disabled');
   });
 
+  test('keeps legacy azure knowledge disabled when vector store resources remain after tool deactivation', () => {
+    const body = {};
+
+    const availability = applyAssistantRunToolAccess({
+      assistant: {
+        tools: [{ type: 'code_interpreter' }],
+        tool_resources: {
+          file_search: {
+            vector_store_ids: ['vs_123'],
+          },
+        },
+      },
+      body,
+      endpoint: 'azureOldAssistants',
+    });
+
+    expect(availability).toEqual({
+      hasCodeInterpreter: true,
+      hasFileSearch: false,
+      hasCodeInterpreterFiles: false,
+      hasAssistantFileIds: false,
+      hasKnowledgeFiles: true,
+    });
+    expect(body.tools).toEqual([{ type: 'code_interpreter' }]);
+    expect(body.additional_instructions).toContain('Knowledge retrieval is disabled');
+  });
+
   test('marks disabled attached resources as requiring a temporary runtime assistant', () => {
     expect(
       requiresTemporaryAssistant({
@@ -138,11 +167,85 @@ describe('assistant tool access helpers', () => {
     ]);
 
     expect(instructions).toContain('already available to your tools');
+    expect(instructions).toContain('All available files for this conversation:');
     expect(instructions).toContain('Code interpreter files:');
     expect(instructions).toContain('- 8MICHEL_FR.pdf');
     expect(instructions).toContain('Knowledge files:');
     expect(instructions).toContain('- GIZ_Copilot_Agent_Overview.pdf');
+    expect(instructions).toContain('you must return one complete list');
     expect(instructions).not.toContain('assistant-file-1');
+  });
+
+  test('hydrates legacy assistant file_ids from assistant file listing when retrieve omits them', async () => {
+    const assistant = await hydrateAssistantLegacyFileIds({
+      openai: {
+        beta: {
+          assistants: {
+            files: {
+              list: jest.fn(async () => ({
+                data: [
+                  { id: 'assistant-file-1', file_id: 'knowledge-file-1' },
+                  { id: 'assistant-file-2', file_id: 'knowledge-file-2' },
+                ],
+              })),
+            },
+          },
+        },
+      },
+      assistant: {
+        id: 'asst_legacy',
+        tools: [{ type: 'retrieval' }],
+      },
+    });
+
+    expect(assistant.file_ids).toEqual(['knowledge-file-1', 'knowledge-file-2']);
+  });
+
+  test('hydrates legacy assistant file search resources from assistant list when retrieve omits them', async () => {
+    const assistant = await hydrateAssistantLegacyConfig({
+      openai: {
+        beta: {
+          assistants: {
+            list: jest.fn(async () => ({
+              body: {
+                data: [
+                  {
+                    id: 'asst_legacy',
+                    tools: [{ type: 'retrieval' }],
+                    tool_resources: {
+                      file_search: {
+                        vector_store_ids: ['vs_123'],
+                      },
+                    },
+                  },
+                ],
+                has_more: false,
+                last_id: 'asst_legacy',
+              },
+            })),
+          },
+        },
+      },
+      assistant: {
+        id: 'asst_legacy',
+        tools: [{ type: 'code_interpreter' }],
+        tool_resources: {
+          code_interpreter: {
+            file_ids: ['assistant-code-1'],
+          },
+        },
+      },
+    });
+
+    expect(assistant.tools).toEqual([{ type: 'code_interpreter' }, { type: 'retrieval' }]);
+    expect(assistant.tool_resources).toEqual({
+      code_interpreter: {
+        file_ids: ['assistant-code-1'],
+      },
+      file_search: {
+        vector_store_ids: ['vs_123'],
+      },
+    });
   });
 
   test('adds assistant filename context to run instructions for enabled tools', async () => {
@@ -200,6 +303,129 @@ describe('assistant tool access helpers', () => {
     expect(body.additional_instructions).not.toContain('knowledge-file-1');
   });
 
+  test('adds assistant filename context using legacy assistant file listing fallback', async () => {
+    const body = {
+      additional_instructions: 'Base instructions.',
+    };
+    const openai = {
+      beta: {
+        assistants: {
+          files: {
+            list: jest.fn(async () => ({
+              data: [{ id: 'assistant-file-1', file_id: 'knowledge-file-1' }],
+            })),
+          },
+        },
+      },
+      files: {
+        retrieve: jest.fn(async (file_id) => ({
+          id: file_id,
+          filename: {
+            'assistant-code-1': '8MICHEL_FR.pdf',
+            'knowledge-file-1': 'GIZ_Copilot_Agent_Overview.pdf',
+          }[file_id],
+        })),
+      },
+      vectorStores: {
+        files: {
+          list: jest.fn(async function* () {}),
+        },
+      },
+    };
+
+    await applyAssistantRunFileNameContext({
+      openai,
+      body,
+      availability: {
+        hasCodeInterpreter: true,
+        hasFileSearch: true,
+      },
+      assistant: {
+        id: 'asst_legacy',
+        tool_resources: {
+          code_interpreter: {
+            file_ids: ['assistant-code-1'],
+          },
+        },
+      },
+    });
+
+    expect(openai.beta.assistants.files.list).toHaveBeenCalledWith('asst_legacy');
+    expect(body.additional_instructions).toContain('Code interpreter files:');
+    expect(body.additional_instructions).toContain('Knowledge files:');
+    expect(body.additional_instructions).toContain('- GIZ_Copilot_Agent_Overview.pdf');
+  });
+
+  test('adds assistant filename context using legacy assistant list file_search fallback', async () => {
+    const body = {
+      additional_instructions: 'Base instructions.',
+    };
+    const openai = {
+      beta: {
+        assistants: {
+          list: jest.fn(async () => ({
+            body: {
+              data: [
+                {
+                  id: 'asst_legacy',
+                  tools: [{ type: 'retrieval' }],
+                  tool_resources: {
+                    file_search: {
+                      vector_store_ids: ['vs_123'],
+                    },
+                  },
+                },
+              ],
+              has_more: false,
+              last_id: 'asst_legacy',
+            },
+          })),
+        },
+      },
+      files: {
+        retrieve: jest.fn(async (file_id) => ({
+          id: file_id,
+          filename: {
+            'assistant-code-1': '8MICHEL_FR.pdf',
+            'knowledge-file-1': 'GIZ_Copilot_Agent_Overview.pdf',
+          }[file_id],
+        })),
+      },
+      vectorStores: {
+        files: {
+          list: jest.fn(async function* () {
+            yield { id: 'vsf_123', file_id: 'knowledge-file-1' };
+          }),
+        },
+      },
+    };
+
+    const assistant = await hydrateAssistantLegacyConfig({
+      openai,
+      assistant: {
+        id: 'asst_legacy',
+        tools: [{ type: 'code_interpreter' }],
+        tool_resources: {
+          code_interpreter: {
+            file_ids: ['assistant-code-1'],
+          },
+        },
+      },
+    });
+
+    await applyAssistantRunFileNameContext({
+      openai,
+      body,
+      availability: getAssistantToolAvailability(assistant),
+      assistant,
+    });
+
+    expect(openai.beta.assistants.list).toHaveBeenCalled();
+    expect(body.additional_instructions).toContain('Code interpreter files:');
+    expect(body.additional_instructions).toContain('Knowledge files:');
+    expect(body.additional_instructions).toContain('- GIZ_Copilot_Agent_Overview.pdf');
+  });
+
   test('builds a runtime assistant payload without disabled tool resources', () => {
     const payload = buildRuntimeAssistantPayload({
       userId: 'user_123',
@@ -250,6 +476,46 @@ describe('assistant tool access helpers', () => {
         file_search: {
           vector_store_ids: ['vs_1'],
         },
+      },
+    });
+  });
+
+  test('builds a runtime assistant payload without legacy knowledge resources when file search is disabled', () => {
+    const payload = buildRuntimeAssistantPayload({
+      userId: 'user_123',
+      endpoint: 'azureOldAssistants',
+      availability: {
+        hasCodeInterpreter: true,
+        hasFileSearch: false,
+        hasCodeInterpreterFiles: true,
+        hasAssistantFileIds: false,
+        hasKnowledgeFiles: true,
+      },
+      assistant: {
+        id: 'asst_parent',
+        model: 'gpt-4.1-deployment',
+        name: 'Assistant487',
+        description: 'desc',
+        instructions: 'instr',
+        tools: [{ type: 'code_interpreter' }],
+        metadata: {
+          author: 'original_author',
+        },
+        tool_resources: {
+          code_interpreter: {
+            file_ids: ['code-file-1'],
+          },
+          file_search: {
+            vector_store_ids: ['vs_1'],
+          },
+        },
+      },
+    });
+
+    expect(payload.tools).toEqual([{ type: 'code_interpreter' }]);
+    expect(payload.tool_resources).toEqual({
+      code_interpreter: {
+        file_ids: ['code-file-1'],
       },
     });
   });
