@@ -71,6 +71,37 @@ describe('composeAgentUpdatePayload', () => {
 
     expect(payload.avatar).toBeUndefined();
   });
+
+  it('omits admin-managed settings for non-admin updates', () => {
+    const form = createForm();
+    form.artifacts = 'default';
+    form.model_parameters = { temperature: 0.2 } as AgentForm['model_parameters'];
+    form.support_contact = { name: 'Support', email: 'support@example.com' };
+
+    const { payload } = composeAgentUpdatePayload(form, 'agent_123', false);
+
+    expect(payload).toEqual({
+      name: 'Agent',
+      description: null,
+      instructions: null,
+      category: 'general_support',
+    });
+  });
+
+  it('keeps provider and model metadata separate for non-admin creates', () => {
+    const form = createForm();
+
+    const { payload, provider, model } = composeAgentUpdatePayload(form, undefined, false);
+
+    expect(payload).toEqual({
+      name: 'Agent',
+      description: null,
+      instructions: null,
+      category: 'general_support',
+    });
+    expect(provider).toBe('openai');
+    expect(model).toBe('gpt-4');
+  });
 });
 
 describe('persistAvatarChanges', () => {

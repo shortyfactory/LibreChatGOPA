@@ -141,11 +141,12 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error).toBe('Forbidden');
+    expect(response.body.message).toBe('Only admins can manage agent builder files');
     expect(processAgentFileUpload).not.toHaveBeenCalled();
     expect(fs.promises.unlink).toHaveBeenCalledWith('/tmp/t.png');
   });
 
-  it('should allow upload for agent owner', async () => {
+  it('should deny upload for non-admin agent owners', async () => {
     await createAgent({
       id: agentCustomId,
       name: 'Test Agent',
@@ -162,8 +163,9 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
       file_id: uuidv4(),
     });
 
-    expect(response.status).toBe(200);
-    expect(processAgentFileUpload).toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Only admins can manage agent builder files');
+    expect(processAgentFileUpload).not.toHaveBeenCalled();
   });
 
   it('should allow upload for admin regardless of ownership', async () => {
@@ -187,7 +189,7 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
     expect(processAgentFileUpload).toHaveBeenCalled();
   });
 
-  it('should allow upload for user with EDIT permission', async () => {
+  it('should deny upload for non-admin users with EDIT permission', async () => {
     const agent = await createAgent({
       id: agentCustomId,
       name: 'Test Agent',
@@ -214,8 +216,9 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
       file_id: uuidv4(),
     });
 
-    expect(response.status).toBe(200);
-    expect(processAgentFileUpload).toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Only admins can manage agent builder files');
+    expect(processAgentFileUpload).not.toHaveBeenCalled();
   });
 
   it('should deny upload for user with only VIEW permission', async () => {
@@ -247,6 +250,7 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error).toBe('Forbidden');
+    expect(response.body.message).toBe('Only admins can manage agent builder files');
     expect(processAgentFileUpload).not.toHaveBeenCalled();
     expect(fs.promises.unlink).toHaveBeenCalledWith('/tmp/t.png');
   });
@@ -261,8 +265,8 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
     expect(response.status).toBe(200);
   });
 
-  it('should return 404 for non-existent agent', async () => {
-    const app = createAppWithUser(otherUserId);
+  it('should return 404 for non-existent agent uploads from admins', async () => {
+    const app = createAppWithUser(otherUserId, SystemRoles.ADMIN);
     const response = await request(app).post('/images').send({
       endpoint: 'agents',
       agent_id: 'agent_nonexistent123456789',
@@ -370,6 +374,7 @@ describe('POST /images - Agent Upload Permission Check (Integration)', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error).toBe('Forbidden');
+    expect(response.body.message).toBe('Only admins can manage agent builder files');
     expect(processAgentFileUpload).not.toHaveBeenCalled();
     expect(fs.promises.unlink).toHaveBeenCalledWith('/tmp/t.png');
   });

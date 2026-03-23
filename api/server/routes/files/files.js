@@ -6,6 +6,7 @@ const {
   getFoundryFileInfo,
   getFoundryFileArrayBuffer,
   isFoundryAgentsConfigured,
+  requireAdmin,
   verifyAgentUploadPermission,
 } = require('@librechat/api');
 const {
@@ -13,10 +14,8 @@ const {
   isUUID,
   CacheKeys,
   FileSources,
-  ResourceType,
   SystemRoles,
   EModelEndpoint,
-  PermissionBits,
   checkOpenAIStorage,
   isAssistantsEndpoint,
 } = require('librechat-data-provider');
@@ -119,10 +118,9 @@ router.get('/', async (req, res) => {
  * @param {string} agent_id - The agent ID to get files for
  * @returns {Promise<TFile[]>} Array of files attached to the agent
  */
-router.get('/agent/:agent_id', async (req, res) => {
+router.get('/agent/:agent_id', requireAdmin, async (req, res) => {
   try {
     const { agent_id } = req.params;
-    const userId = req.user.id;
 
     if (!agent_id) {
       return res.status(400).json({ error: 'Agent ID is required' });
@@ -131,20 +129,6 @@ router.get('/agent/:agent_id', async (req, res) => {
     const agent = await getAgent({ id: agent_id });
     if (!agent) {
       return res.status(200).json([]);
-    }
-
-    if (agent.author.toString() !== userId) {
-      const hasEditPermission = await checkPermission({
-        userId,
-        role: req.user.role,
-        resourceType: ResourceType.AGENT,
-        resourceId: agent._id,
-        requiredPermission: PermissionBits.EDIT,
-      });
-
-      if (!hasEditPermission) {
-        return res.status(200).json([]);
-      }
     }
 
     const agentFileIds = [];
@@ -185,6 +169,10 @@ router.delete('/', async (req, res) => {
       return res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
     }
 
+    if (req.body.agent_id && req.body.tool_resource && req.user.role !== SystemRoles.ADMIN) {
+      return res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
+    }
+
     const { files: _files } = req.body;
 
     /** @type {MongoFile[]} */
@@ -215,6 +203,22 @@ router.delete('/', async (req, res) => {
       await processDeleteRequest({ req, files: dbFiles });
       logger.debug(
         `[/files] Assistant files deleted successfully by admin: ${dbFiles
+          .filter((f) => f.file_id)
+          .map((f) => f.file_id)
+          .join(', ')}`,
+      );
+      return res.status(200).json({ message: 'Files deleted successfully' });
+    }
+
+    if (
+      req.body.agent_id &&
+      req.body.tool_resource &&
+      req.user.role === SystemRoles.ADMIN &&
+      dbFiles.length > 0
+    ) {
+      await processDeleteRequest({ req, files: dbFiles });
+      logger.debug(
+        `[/files] Agent builder files deleted successfully by admin: ${dbFiles
           .filter((f) => f.file_id)
           .map((f) => f.file_id)
           .join(', ')}`,

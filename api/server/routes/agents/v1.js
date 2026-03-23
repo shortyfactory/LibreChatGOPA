@@ -1,5 +1,5 @@
 const express = require('express');
-const { generateCheckAccess } = require('@librechat/api');
+const { generateCheckAccess, requireAdmin } = require('@librechat/api');
 const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data-provider');
 const { requireJwtAuth, configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
@@ -36,7 +36,7 @@ router.use(requireJwtAuth);
  * Agent actions route.
  * @route GET|POST /agents/actions
  */
-router.use('/actions', configMiddleware, actions);
+router.use('/actions', requireAdmin, configMiddleware, actions);
 
 /**
  * Get a list of available tools for agents.
@@ -83,6 +83,7 @@ router.get(
  */
 router.get(
   '/:id/expanded',
+  requireAdmin,
   checkAgentAccess,
   canAccessAgentResource({
     requiredPermission: PermissionBits.EDIT,
@@ -148,6 +149,7 @@ router.delete(
  */
 router.post(
   '/:id/revert',
+  requireAdmin,
   checkGlobalAgentShare,
   canAccessAgentResource({
     requiredPermission: PermissionBits.EDIT,

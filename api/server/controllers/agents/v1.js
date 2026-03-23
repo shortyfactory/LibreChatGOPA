@@ -6,6 +6,8 @@ const {
   agentCreateSchema,
   agentUpdateSchema,
   refreshListAvatars,
+  sanitizeAgentCreatePayload,
+  sanitizeAgentUpdatePayload,
   collectEdgeAgentIds,
   mergeAgentOcrConversion,
   MAX_AVATAR_REFRESH_AGENTS,
@@ -181,7 +183,10 @@ const filterAuthorizedTools = async ({ tools, userId, availableTools, existingTo
  */
 const createAgentHandler = async (req, res) => {
   try {
-    const validatedData = agentCreateSchema.parse(req.body);
+    const validatedData = sanitizeAgentCreatePayload(
+      agentCreateSchema.parse(req.body),
+      req.user?.role,
+    );
     const { tools = [], ...agentData } = removeNullishValues(validatedData);
 
     if (agentData.model_parameters && typeof agentData.model_parameters === 'object') {
@@ -310,8 +315,10 @@ const getAgentHandler = async (req, res, expandProperties = false) => {
         id: agent.id,
         name: agent.name,
         description: agent.description,
+        instructions: agent.instructions,
         avatar: agent.avatar,
         author: agent.author,
+        category: agent.category,
         provider: agent.provider,
         model: agent.model,
         projectIds: agent.projectIds,
@@ -345,7 +352,10 @@ const getAgentHandler = async (req, res, expandProperties = false) => {
 const updateAgentHandler = async (req, res) => {
   try {
     const id = req.params.id;
-    const validatedData = agentUpdateSchema.parse(req.body);
+    const validatedData = sanitizeAgentUpdatePayload(
+      agentUpdateSchema.parse(req.body),
+      req.user?.role,
+    );
     // Preserve explicit null for avatar to allow resetting the avatar
     const { avatar: avatarField, _id, ...rest } = validatedData;
     const updateData = removeNullishValues(rest);

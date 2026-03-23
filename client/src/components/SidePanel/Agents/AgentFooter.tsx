@@ -35,6 +35,7 @@ export default function AgentFooter({
 }) {
   const localize = useLocalize();
   const { user } = useAuthContext();
+  const isAdmin = user?.role === SystemRoles.ADMIN;
 
   const methods = useFormContext<AgentForm>();
 
@@ -77,9 +78,9 @@ export default function AgentFooter({
 
   return (
     <div className="mb-1 flex w-full flex-col gap-2">
-      {showButtons && <AdvancedButton setActivePanel={setActivePanel} />}
-      {showButtons && agent_id && <VersionButton setActivePanel={setActivePanel} />}
-      {user?.role === SystemRoles.ADMIN && showButtons && <AdminSettings />}
+      {isAdmin && showButtons && <AdvancedButton setActivePanel={setActivePanel} />}
+      {isAdmin && showButtons && agent_id && <VersionButton setActivePanel={setActivePanel} />}
+      {isAdmin && showButtons && <AdminSettings />}
       {/* Context Button */}
       <div className="flex items-center justify-end gap-2">
         {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canDeleteThisAgent) &&

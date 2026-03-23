@@ -1,4 +1,5 @@
 export * from './avatars';
+export * from './builder';
 export * from './chain';
 export * from './client';
 export * from './context';

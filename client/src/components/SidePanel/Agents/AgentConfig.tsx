@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useToastContext } from '@librechat/client';
 import { Controller, useWatch, useFormContext } from 'react-hook-form';
-import { EModelEndpoint, getEndpointField } from 'librechat-data-provider';
+import { EModelEndpoint, SystemRoles, getEndpointField } from 'librechat-data-provider';
 import type { AgentForm, IconComponentTypes } from '~/common';
 import {
   removeFocusOutlines,
@@ -16,7 +16,7 @@ import useAgentCapabilities from '~/hooks/Agents/useAgentCapabilities';
 import { useFileMapContext, useAgentPanelContext } from '~/Providers';
 import AgentCategorySelector from './AgentCategorySelector';
 import Action from '~/components/SidePanel/Builder/Action';
-import { useLocalize, useVisibleTools } from '~/hooks';
+import { useAuthContext, useLocalize, useVisibleTools } from '~/hooks';
 import { Panel, isEphemeralAgent } from '~/common';
 import { useGetAgentFiles } from '~/data-provider';
 import { icons } from '~/hooks/Endpoint/Icons';
@@ -39,6 +39,7 @@ const inputClass = cn(
 
 export default function AgentConfig() {
   const localize = useLocalize();
+  const { user } = useAuthContext();
   const fileMap = useFileMapContext();
   const { showToast } = useToastContext();
   const methods = useFormContext<AgentForm>();
@@ -54,6 +55,7 @@ export default function AgentConfig() {
     setActivePanel,
     endpointsConfig,
   } = useAgentPanelContext();
+  const isAdmin = user?.role === SystemRoles.ADMIN;
 
   const {
     control,
@@ -65,7 +67,9 @@ export default function AgentConfig() {
   const tools = useWatch({ control, name: 'tools' });
   const agent_id = useWatch({ control, name: 'id' });
 
-  const { data: agentFiles = [] } = useGetAgentFiles(agent_id);
+  const { data: agentFiles = [] } = useGetAgentFiles(agent_id, {
+    enabled: isAdmin,
+  });
 
   const mergedFileMap = useMemo(() => {
     const newFileMap = { ...fileMap };
@@ -257,56 +261,53 @@ export default function AgentConfig() {
         </div>
         {/* Instructions */}
         <Instructions />
-        {/* Model and Provider */}
-        <div className="mb-4">
-          <label className={labelClass} htmlFor="provider">
-            {localize('com_ui_model')} <span className="text-red-500">*</span>
-          </label>
-          <button
-            type="button"
-            onClick={() => setActivePanel(Panel.model)}
-            className="btn btn-neutral border-token-border-light relative h-10 w-full rounded-lg font-medium"
-            aria-haspopup="true"
-            aria-expanded="false"
-          >
-            <div className="flex w-full items-center gap-2">
-              {Icon && (
-                <div className="shadow-stroke relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white text-black dark:bg-white">
-                  <Icon
-                    className="h-2/3 w-2/3"
-                    endpoint={providerValue as string}
-                    endpointType={endpointType}
-                    iconURL={endpointIconURL}
-                  />
-                </div>
-              )}
-              <span>{model != null && model ? model : localize('com_ui_select_model')}</span>
-            </div>
-          </button>
-        </div>
-        {(codeEnabled ||
-          fileSearchEnabled ||
-          artifactsEnabled ||
-          contextEnabled ||
-          webSearchEnabled) && (
+        {isAdmin && (
           <div className="mb-4 flex w-full flex-col items-start gap-3">
-            <label className="text-token-text-primary block font-medium">
-              {localize('com_assistants_capabilities')}
-            </label>
-            {/* Code Execution */}
-            {codeEnabled && <CodeForm agent_id={agent_id} files={code_files} />}
-            {/* Web Search */}
-            {webSearchEnabled && <SearchForm />}
-            {/* File Context */}
-            {contextEnabled && <FileContext agent_id={agent_id} files={context_files} />}
-            {/* Artifacts */}
-            {artifactsEnabled && <Artifacts />}
-            {/* File Search */}
-            {fileSearchEnabled && <FileSearch agent_id={agent_id} files={knowledge_files} />}
+            <div className="w-full">
+              <label className={labelClass} htmlFor="provider">
+                {localize('com_ui_model')} <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setActivePanel(Panel.model)}
+                className="btn btn-neutral border-token-border-light relative h-10 w-full rounded-lg font-medium"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                <div className="flex w-full items-center gap-2">
+                  {Icon && (
+                    <div className="shadow-stroke relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white text-black dark:bg-white">
+                      <Icon
+                        className="h-2/3 w-2/3"
+                        endpoint={providerValue as string}
+                        endpointType={endpointType}
+                        iconURL={endpointIconURL}
+                      />
+                    </div>
+                  )}
+                  <span>{model != null && model ? model : localize('com_ui_select_model')}</span>
+                </div>
+              </button>
+            </div>
+            {(codeEnabled ||
+              fileSearchEnabled ||
+              artifactsEnabled ||
+              contextEnabled ||
+              webSearchEnabled) && (
+              <>
+                <label className="text-token-text-primary block font-medium">
+                  {localize('com_assistants_capabilities')}
+                </label>
+                {codeEnabled && <CodeForm agent_id={agent_id} files={code_files} />}
+                {webSearchEnabled && <SearchForm />}
+                {contextEnabled && <FileContext agent_id={agent_id} files={context_files} />}
+                {artifactsEnabled && <Artifacts />}
+                {fileSearchEnabled && <FileSearch agent_id={agent_id} files={knowledge_files} />}
+              </>
+            )}
           </div>
         )}
-        {/* MCP Section */}
-        {availableMCPServers != null && availableMCPServers.length > 0 && (
+        {isAdmin && availableMCPServers != null && availableMCPServers.length > 0 && (
           <MCPTools
             agentId={agent_id}
             mcpServerNames={mcpServerNames}
@@ -314,186 +315,189 @@ export default function AgentConfig() {
           />
         )}
 
-        {/* Agent Tools & Actions */}
-        <div className="mb-4">
-          <label className={labelClass}>
-            {(() => {
-              if (toolsEnabled === true && actionsEnabled === true) {
-                return localize('com_ui_tools_and_actions');
-              }
-              if (toolsEnabled === true) {
-                return localize('com_ui_tools');
-              }
-              if (actionsEnabled === true) {
-                return localize('com_assistants_actions');
-              }
-              return '';
-            })()}
-          </label>
-          <div>
-            <div className="mb-1">
-              {/* Render all visible IDs */}
-              {toolIds.map((toolId, i) => {
-                const tool = regularTools?.find((t) => t.pluginKey === toolId);
-                if (!tool) return null;
-                return (
-                  <AgentTool
-                    key={`${toolId}-${i}-${agent_id}`}
-                    tool={toolId}
-                    regularTools={regularTools}
-                    agent_id={agent_id}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex flex-col gap-1">
-              {(actions ?? [])
-                .filter((action) => action.agent_id === agent_id)
-                .map((action, i) => (
-                  <Action
-                    key={i}
-                    action={action}
-                    onClick={() => {
-                      setAction(action);
-                      setActivePanel(Panel.actions);
-                    }}
-                  />
-                ))}
-            </div>
-            <div className="mt-2 flex space-x-2">
-              {(toolsEnabled ?? false) && (
-                <button
-                  type="button"
-                  onClick={() => setShowToolDialog(true)}
-                  className="btn btn-neutral border-token-border-light relative h-9 w-full rounded-lg font-medium"
-                  aria-haspopup="dialog"
-                >
-                  <div className="flex w-full items-center justify-center gap-2">
-                    {localize('com_assistants_add_tools')}
-                  </div>
-                </button>
-              )}
-              {(actionsEnabled ?? false) && (
-                <button
-                  type="button"
-                  disabled={isEphemeralAgent(agent_id)}
-                  onClick={handleAddActions}
-                  className="btn btn-neutral border-token-border-light relative h-9 w-full rounded-lg font-medium"
-                  aria-haspopup="dialog"
-                >
-                  <div className="flex w-full items-center justify-center gap-2">
-                    {localize('com_assistants_add_actions')}
-                  </div>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-        {/* Support Contact (Optional) */}
-        <div className="mb-4">
-          <div className="mb-1.5 flex items-center gap-2">
-            <span>
-              <label className="text-token-text-primary block font-medium">
-                {localize('com_ui_support_contact')}
-              </label>
-            </span>
-          </div>
-          <div className="space-y-3">
-            {/* Support Contact Name */}
-            <div className="flex flex-col">
-              <label
-                className="mb-1 flex items-center justify-between"
-                htmlFor="support-contact-name"
-              >
-                <span className="text-sm">{localize('com_ui_support_contact_name')}</span>
-              </label>
-              <Controller
-                name="support_contact.name"
-                control={control}
-                rules={{
-                  minLength: {
-                    value: 3,
-                    message: localize('com_ui_support_contact_name_min_length', { minLength: 3 }),
-                  },
-                }}
-                render={({ field, fieldState: { error } }) => (
-                  <>
-                    <input
-                      {...field}
-                      value={field.value ?? ''}
-                      className={cn(inputClass, error ? 'border-2 border-red-500' : '')}
-                      id="support-contact-name"
-                      type="text"
-                      placeholder={localize('com_ui_support_contact_name_placeholder')}
-                      aria-label="Support contact name"
-                      aria-invalid={error ? 'true' : 'false'}
-                      aria-describedby={error ? 'support-contact-name-error' : undefined}
+        {isAdmin && (
+          <div className="mb-4">
+            <label className={labelClass}>
+              {(() => {
+                if (toolsEnabled === true && actionsEnabled === true) {
+                  return localize('com_ui_tools_and_actions');
+                }
+                if (toolsEnabled === true) {
+                  return localize('com_ui_tools');
+                }
+                if (actionsEnabled === true) {
+                  return localize('com_assistants_actions');
+                }
+                return '';
+              })()}
+            </label>
+            <div>
+              <div className="mb-1">
+                {toolIds.map((toolId, i) => {
+                  const tool = regularTools?.find((t) => t.pluginKey === toolId);
+                  if (!tool) {
+                    return null;
+                  }
+                  return (
+                    <AgentTool
+                      key={`${toolId}-${i}-${agent_id}`}
+                      tool={toolId}
+                      regularTools={regularTools}
+                      agent_id={agent_id}
                     />
-                    {error && (
-                      <span
-                        id="support-contact-name-error"
-                        className="text-sm text-red-500 transition duration-300 ease-in-out"
-                        role="alert"
-                        aria-live="polite"
-                      >
-                        {error.message}
-                      </span>
-                    )}
-                  </>
-                )}
-              />
-            </div>
-            {/* Support Contact Email */}
-            <div className="flex flex-col">
-              <label
-                className="mb-1 flex items-center justify-between"
-                htmlFor="support-contact-email"
-              >
-                <span className="text-sm">{localize('com_ui_support_contact_email')}</span>
-              </label>
-              <Controller
-                name="support_contact.email"
-                control={control}
-                rules={{
-                  validate: (value) =>
-                    validateEmail(value ?? '', localize('com_ui_support_contact_email_invalid')),
-                }}
-                render={({ field, fieldState: { error } }) => (
-                  <>
-                    <input
-                      {...field}
-                      value={field.value ?? ''}
-                      className={cn(inputClass, error ? 'border-2 border-red-500' : '')}
-                      id="support-contact-email"
-                      type="email"
-                      placeholder={localize('com_ui_support_contact_email_placeholder')}
-                      aria-label="Support contact email"
-                      aria-invalid={error ? 'true' : 'false'}
-                      aria-describedby={error ? 'support-contact-email-error' : undefined}
+                  );
+                })}
+              </div>
+              <div className="flex flex-col gap-1">
+                {(actions ?? [])
+                  .filter((action) => action.agent_id === agent_id)
+                  .map((action, i) => (
+                    <Action
+                      key={i}
+                      action={action}
+                      onClick={() => {
+                        setAction(action);
+                        setActivePanel(Panel.actions);
+                      }}
                     />
-                    {error && (
-                      <span
-                        id="support-contact-email-error"
-                        className="text-sm text-red-500 transition duration-300 ease-in-out"
-                        role="alert"
-                        aria-live="polite"
-                      >
-                        {error.message}
-                      </span>
-                    )}
-                  </>
+                  ))}
+              </div>
+              <div className="mt-2 flex space-x-2">
+                {(toolsEnabled ?? false) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowToolDialog(true)}
+                    className="btn btn-neutral border-token-border-light relative h-9 w-full rounded-lg font-medium"
+                    aria-haspopup="dialog"
+                  >
+                    <div className="flex w-full items-center justify-center gap-2">
+                      {localize('com_assistants_add_tools')}
+                    </div>
+                  </button>
                 )}
-              />
+                {(actionsEnabled ?? false) && (
+                  <button
+                    type="button"
+                    disabled={isEphemeralAgent(agent_id)}
+                    onClick={handleAddActions}
+                    className="btn btn-neutral border-token-border-light relative h-9 w-full rounded-lg font-medium"
+                    aria-haspopup="dialog"
+                  >
+                    <div className="flex w-full items-center justify-center gap-2">
+                      {localize('com_assistants_add_actions')}
+                    </div>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
+        {isAdmin && (
+          <div className="mb-4">
+            <div className="mb-1.5 flex items-center gap-2">
+              <span>
+                <label className="text-token-text-primary block font-medium">
+                  {localize('com_ui_support_contact')}
+                </label>
+              </span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex flex-col">
+                <label
+                  className="mb-1 flex items-center justify-between"
+                  htmlFor="support-contact-name"
+                >
+                  <span className="text-sm">{localize('com_ui_support_contact_name')}</span>
+                </label>
+                <Controller
+                  name="support_contact.name"
+                  control={control}
+                  rules={{
+                    minLength: {
+                      value: 3,
+                      message: localize('com_ui_support_contact_name_min_length', { minLength: 3 }),
+                    },
+                  }}
+                  render={({ field, fieldState: { error } }) => (
+                    <>
+                      <input
+                        {...field}
+                        value={field.value ?? ''}
+                        className={cn(inputClass, error ? 'border-2 border-red-500' : '')}
+                        id="support-contact-name"
+                        type="text"
+                        placeholder={localize('com_ui_support_contact_name_placeholder')}
+                        aria-label="Support contact name"
+                        aria-invalid={error ? 'true' : 'false'}
+                        aria-describedby={error ? 'support-contact-name-error' : undefined}
+                      />
+                      {error && (
+                        <span
+                          id="support-contact-name-error"
+                          className="text-sm text-red-500 transition duration-300 ease-in-out"
+                          role="alert"
+                          aria-live="polite"
+                        >
+                          {error.message}
+                        </span>
+                      )}
+                    </>
+                  )}
+                />
+              </div>
+              <div className="flex flex-col">
+                <label
+                  className="mb-1 flex items-center justify-between"
+                  htmlFor="support-contact-email"
+                >
+                  <span className="text-sm">{localize('com_ui_support_contact_email')}</span>
+                </label>
+                <Controller
+                  name="support_contact.email"
+                  control={control}
+                  rules={{
+                    validate: (value) =>
+                      validateEmail(value ?? '', localize('com_ui_support_contact_email_invalid')),
+                  }}
+                  render={({ field, fieldState: { error } }) => (
+                    <>
+                      <input
+                        {...field}
+                        value={field.value ?? ''}
+                        className={cn(inputClass, error ? 'border-2 border-red-500' : '')}
+                        id="support-contact-email"
+                        type="email"
+                        placeholder={localize('com_ui_support_contact_email_placeholder')}
+                        aria-label="Support contact email"
+                        aria-invalid={error ? 'true' : 'false'}
+                        aria-describedby={error ? 'support-contact-email-error' : undefined}
+                      />
+                      {error && (
+                        <span
+                          id="support-contact-email-error"
+                          className="text-sm text-red-500 transition duration-300 ease-in-out"
+                          role="alert"
+                          aria-live="polite"
+                        >
+                          {error.message}
+                        </span>
+                      )}
+                    </>
+                  )}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      <ToolSelectDialog
-        isOpen={showToolDialog}
-        setIsOpen={setShowToolDialog}
-        endpoint={EModelEndpoint.agents}
-      />
-      {availableMCPServers != null && availableMCPServers.length > 0 && (
+      {isAdmin && (
+        <ToolSelectDialog
+          isOpen={showToolDialog}
+          setIsOpen={setShowToolDialog}
+          endpoint={EModelEndpoint.agents}
+        />
+      )}
+      {isAdmin && availableMCPServers != null && availableMCPServers.length > 0 && (
         <MCPToolSelectDialog
           agentId={agent_id}
           isOpen={showMCPToolDialog}

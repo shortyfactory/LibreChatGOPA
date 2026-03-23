@@ -2,7 +2,7 @@ import type { IUser } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { Types } from 'mongoose';
 import { logger } from '@librechat/data-schemas';
-import { SystemRoles, ResourceType, PermissionBits } from 'librechat-data-provider';
+import { SystemRoles, ResourceType } from 'librechat-data-provider';
 import type { ServerRequest } from '~/types';
 
 export type AgentUploadAuthResult =
@@ -36,15 +36,23 @@ export async function checkAgentUploadAuth(
   deps: AgentUploadAuthDeps,
 ): Promise<AgentUploadAuthResult> {
   const { userId, userRole, agentId, toolResource, messageFile } = params;
-  const { getAgent, checkPermission } = deps;
+  const { getAgent } = deps;
 
   const isMessageAttachment = messageFile === true || messageFile === 'true';
   if (!agentId || toolResource == null || isMessageAttachment) {
     return { allowed: true };
   }
 
-  if (userRole === SystemRoles.ADMIN) {
-    return { allowed: true };
+  if (userRole !== SystemRoles.ADMIN) {
+    logger.warn(
+      `[agentUploadAuth] User ${userId} denied agent builder upload for ${agentId} (admin only)`,
+    );
+    return {
+      allowed: false,
+      status: 403,
+      error: 'Forbidden',
+      message: 'Only admins can manage agent builder files',
+    };
   }
 
   const agent = await getAgent({ id: agentId });
@@ -52,31 +60,7 @@ export async function checkAgentUploadAuth(
     return { allowed: false, status: 404, error: 'Not Found', message: 'Agent not found' };
   }
 
-  if (agent.author?.toString() === userId) {
-    return { allowed: true };
-  }
-
-  const hasEditPermission = await checkPermission({
-    userId,
-    role: userRole,
-    resourceType: ResourceType.AGENT,
-    resourceId: agent._id,
-    requiredPermission: PermissionBits.EDIT,
-  });
-
-  if (hasEditPermission) {
-    return { allowed: true };
-  }
-
-  logger.warn(
-    `[agentUploadAuth] User ${userId} denied upload to agent ${agentId} (insufficient permissions)`,
-  );
-  return {
-    allowed: false,
-    status: 403,
-    error: 'Forbidden',
-    message: 'Insufficient permissions to upload files to this agent',
-  };
+  return { allowed: true };
 }
 
 /** @returns true if denied (response already sent), false if allowed */

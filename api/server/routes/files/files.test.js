@@ -322,6 +322,45 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(processDeleteRequest).toHaveBeenCalled();
     });
 
+    it('should prevent non-admin users from deleting agent builder files', async () => {
+      const response = await request(app)
+        .delete('/files')
+        .send({
+          agent_id: 'agent_test123',
+          tool_resource: 'context',
+          files: [
+            {
+              file_id: fileId,
+              filepath: '/uploads/test.txt',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Forbidden');
+      expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+
+    it('should allow admins to delete agent builder files', async () => {
+      currentUserRole = SystemRoles.ADMIN;
+
+      const response = await request(app)
+        .delete('/files')
+        .send({
+          agent_id: 'agent_test123',
+          tool_resource: 'context',
+          files: [
+            {
+              file_id: fileId,
+              filepath: '/uploads/test.txt',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(processDeleteRequest).toHaveBeenCalled();
+    });
+
     it('should allow deleting files accessible through shared agent', async () => {
       // Create an agent with the file attached
       const agent = await createAgent({

@@ -203,7 +203,7 @@ describe('File Routes - Agent Files Endpoint', () => {
   });
 
   describe('GET /files/agent/:agent_id', () => {
-    it('should return files accessible through the agent for non-author with EDIT permission', async () => {
+    it('should deny non-admin users even when they have EDIT permission on the agent', async () => {
       // Create an agent with files attached
       const agent = await createAgent({
         id: agentId,
@@ -229,19 +229,13 @@ describe('File Routes - Agent Files Endpoint', () => {
         grantedBy: authorId,
       });
 
-      // Mock req.user for this request
-      app.use((req, res, next) => {
-        req.user = { id: otherUserId.toString() };
-        next();
-      });
-
       const response = await request(app).get(`/files/agent/${agentId}`);
 
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(2);
-      expect(response.body.map((f) => f.file_id)).toContain(fileId1);
-      expect(response.body.map((f) => f.file_id)).toContain(fileId2);
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        error: 'Access denied: Admin privileges required',
+        error_code: 'ADMIN_REQUIRED',
+      });
     });
 
     it('should return 400 when agent_id is not provided', async () => {
@@ -250,15 +244,17 @@ describe('File Routes - Agent Files Endpoint', () => {
       expect(response.status).toBe(404); // Express returns 404 for missing route parameter
     });
 
-    it('should return empty array for non-existent agent', async () => {
+    it('should reject non-admin users before resolving a non-existent agent', async () => {
       const response = await request(app).get('/files/agent/non-existent-agent');
 
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toEqual([]);
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        error: 'Access denied: Admin privileges required',
+        error_code: 'ADMIN_REQUIRED',
+      });
     });
 
-    it('should return empty array when user only has VIEW permission', async () => {
+    it('should deny non-admin users with only VIEW permission', async () => {
       // Create an agent with files attached
       const agent = await createAgent({
         id: agentId,
@@ -286,12 +282,14 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       const response = await request(app).get(`/files/agent/${agentId}`);
 
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toEqual([]);
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        error: 'Access denied: Admin privileges required',
+        error_code: 'ADMIN_REQUIRED',
+      });
     });
 
-    it('should return agent files for agent author', async () => {
+    it('should return agent files for admin users', async () => {
       // Create an agent with files attached
       await createAgent({
         id: agentId,
@@ -306,24 +304,24 @@ describe('File Routes - Agent Files Endpoint', () => {
         },
       });
 
-      // Create a new app instance with author authentication
-      const authorApp = express();
-      authorApp.use(express.json());
-      authorApp.use((req, res, next) => {
-        req.user = { id: authorId.toString() };
+      // Create a new app instance with admin authentication
+      const adminApp = express();
+      adminApp.use(express.json());
+      adminApp.use((req, res, next) => {
+        req.user = { id: otherUserId.toString(), role: SystemRoles.ADMIN, email: 'admin@test.com' };
         req.app = { locals: {} };
         next();
       });
-      authorApp.use('/files', router);
+      adminApp.use('/files', router);
 
-      const response = await request(authorApp).get(`/files/agent/${agentId}`);
+      const response = await request(adminApp).get(`/files/agent/${agentId}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body).toHaveLength(2);
     });
 
-    it('should return files uploaded by other users to shared agent for author', async () => {
+    it('should return files uploaded by other users to shared agent for admin users', async () => {
       const anotherUserId = new mongoose.Types.ObjectId();
       const otherUserFileId = uuidv4();
 
@@ -356,17 +354,17 @@ describe('File Routes - Agent Files Endpoint', () => {
         },
       });
 
-      // Create a new app instance with author authentication
-      const authorApp = express();
-      authorApp.use(express.json());
-      authorApp.use((req, res, next) => {
-        req.user = { id: authorId.toString() };
+      // Create a new app instance with admin authentication
+      const adminApp = express();
+      adminApp.use(express.json());
+      adminApp.use((req, res, next) => {
+        req.user = { id: otherUserId.toString(), role: SystemRoles.ADMIN, email: 'admin@test.com' };
         req.app = { locals: {} };
         next();
       });
-      authorApp.use('/files', router);
+      adminApp.use('/files', router);
 
-      const response = await request(authorApp).get(`/files/agent/${agentId}`);
+      const response = await request(adminApp).get(`/files/agent/${agentId}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body)).toBe(true);
@@ -437,11 +435,11 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('Forbidden');
-      expect(response.body.message).toBe('Insufficient permissions to upload files to this agent');
+      expect(response.body.message).toBe('Only admins can manage agent builder files');
       expect(processAgentFileUpload).not.toHaveBeenCalled();
     });
 
-    it('should allow file upload to agent for agent author', async () => {
+    it('should deny file upload to agent for non-admin authors', async () => {
       // Create an agent owned by authorId
       await createAgent({
         id: agentCustomId,
@@ -460,11 +458,12 @@ describe('File Routes - Agent Files Endpoint', () => {
         file_id: uuidv4(),
       });
 
-      expect(response.status).toBe(200);
-      expect(processAgentFileUpload).toHaveBeenCalled();
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Only admins can manage agent builder files');
+      expect(processAgentFileUpload).not.toHaveBeenCalled();
     });
 
-    it('should allow file upload to agent for user with EDIT permission', async () => {
+    it('should deny file upload to agent for non-admin users with EDIT permission', async () => {
       // Create an agent owned by authorId
       const agent = await createAgent({
         id: agentCustomId,
@@ -494,8 +493,9 @@ describe('File Routes - Agent Files Endpoint', () => {
         file_id: uuidv4(),
       });
 
-      expect(response.status).toBe(200);
-      expect(processAgentFileUpload).toHaveBeenCalled();
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Only admins can manage agent builder files');
+      expect(processAgentFileUpload).not.toHaveBeenCalled();
     });
 
     it('should deny file upload to agent for user with only VIEW permission', async () => {
@@ -530,6 +530,7 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('Forbidden');
+      expect(response.body.message).toBe('Only admins can manage agent builder files');
       expect(processAgentFileUpload).not.toHaveBeenCalled();
     });
 
@@ -557,8 +558,8 @@ describe('File Routes - Agent Files Endpoint', () => {
       expect(processAgentFileUpload).toHaveBeenCalled();
     });
 
-    it('should return 404 when uploading to non-existent agent', async () => {
-      const testApp = createAppWithUser(otherUserId);
+    it('should return 404 when an admin uploads to a non-existent agent', async () => {
+      const testApp = createAppWithUser(otherUserId, SystemRoles.ADMIN);
 
       const response = await request(testApp).post('/files').send({
         endpoint: 'agents',
@@ -715,6 +716,7 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('Forbidden');
+      expect(response.body.message).toBe('Only admins can manage agent builder files');
       expect(processAgentFileUpload).not.toHaveBeenCalled();
     });
   });

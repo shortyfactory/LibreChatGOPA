@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button, useToastContext } from '@librechat/client';
 import { useWatch, useForm, FormProvider } from 'react-hook-form';
@@ -56,26 +56,31 @@ function getUpdateToastMessage(
  * Handles avatar reset requests for persistent agents independently of avatar uploads.
  * @param {AgentForm} data - Form data from the agent configuration form.
  * @param {string | null} [agent_id] - Agent identifier, if the agent already exists.
+ * @param {boolean} [isAdmin=true] - Whether the current user can manage admin-only agent settings.
  * @returns {{ payload: Partial<AgentForm>; provider: string; model: string }} Payload metadata.
  */
-export function composeAgentUpdatePayload(data: AgentForm, agent_id?: string | null) {
+export function composeAgentUpdatePayload(
+  data: AgentForm,
+  agent_id?: string | null,
+  isAdmin = true,
+) {
   const {
     name,
-    artifacts,
     description,
     instructions,
     model: _model,
-    model_parameters,
     provider: _provider,
+    category,
+    avatar_action: avatarActionState,
+    artifacts,
+    model_parameters,
     agent_ids,
     edges,
     end_after_tools,
     hide_sequential_outputs,
     recursion_limit,
-    category,
     support_contact,
     tool_options,
-    avatar_action: avatarActionState,
   } = data;
 
   const shouldResetAvatar =
@@ -83,26 +88,30 @@ export function composeAgentUpdatePayload(data: AgentForm, agent_id?: string | n
   const model = _model ?? '';
   const provider =
     (typeof _provider === 'string' ? _provider : (_provider as StringOption).value) ?? '';
+  const payload: Partial<AgentForm> = {
+    name,
+    description,
+    instructions,
+    category,
+    ...(shouldResetAvatar ? { avatar: null } : {}),
+  };
+
+  if (isAdmin) {
+    payload.artifacts = artifacts;
+    payload.model = model;
+    payload.provider = provider;
+    payload.model_parameters = model_parameters;
+    payload.agent_ids = agent_ids;
+    payload.edges = edges;
+    payload.end_after_tools = end_after_tools;
+    payload.hide_sequential_outputs = hide_sequential_outputs;
+    payload.recursion_limit = recursion_limit;
+    payload.support_contact = support_contact;
+    payload.tool_options = tool_options;
+  }
 
   return {
-    payload: {
-      name,
-      artifacts,
-      description,
-      instructions,
-      model,
-      provider,
-      model_parameters,
-      agent_ids,
-      edges,
-      end_after_tools,
-      hide_sequential_outputs,
-      recursion_limit,
-      category,
-      support_contact,
-      tool_options,
-      ...(shouldResetAvatar ? { avatar: null } : {}),
-    },
+    payload,
     provider,
     model,
   } as const;
@@ -220,6 +229,7 @@ export default function AgentPanel() {
   } = useAgentPanelContext();
 
   const { onSelect: onSelectAgent } = useSelectAgent();
+  const isAdmin = user?.role === SystemRoles.ADMIN;
 
   const modelsQuery = useGetModelsQuery({ refetchOnMount: 'always' });
   const basicAgentQuery = useGetAgentByIdQuery(current_agent_id);
@@ -232,10 +242,10 @@ export default function AgentPanel() {
   const canEdit = hasPermission(PermissionBits.EDIT);
 
   const expandedAgentQuery = useGetExpandedAgentByIdQuery(current_agent_id ?? '', {
-    enabled: !isEphemeralAgent(current_agent_id) && canEdit && !permissionsLoading,
+    enabled: isAdmin && !isEphemeralAgent(current_agent_id) && canEdit && !permissionsLoading,
   });
 
-  const agentQuery = canEdit && expandedAgentQuery.data ? expandedAgentQuery : basicAgentQuery;
+  const agentQuery = isAdmin && expandedAgentQuery.data ? expandedAgentQuery : basicAgentQuery;
 
   const models = useMemo(() => modelsQuery.data ?? {}, [modelsQuery.data]);
   const methods = useForm<AgentForm>({
@@ -296,6 +306,8 @@ export default function AgentPanel() {
     [getValues, uploadAvatarMutation],
   );
   const agent_id = useWatch({ control, name: 'id' });
+  const providerOption = useWatch({ control, name: 'provider' });
+  const selectedModel = useWatch({ control, name: 'model' });
   const previousVersionRef = useRef<number | undefined>();
 
   const allowedProviders = useMemo(
@@ -315,6 +327,34 @@ export default function AgentPanel() {
         .map((provider) => createProviderOption(provider)),
     [endpointsConfig, allowedProviders],
   );
+
+  const providerValue = useMemo(
+    () =>
+      typeof providerOption === 'string'
+        ? providerOption
+        : ((providerOption as StringOption | undefined)?.value ?? ''),
+    [providerOption],
+  );
+
+  useEffect(() => {
+    if (isAdmin || providers.length === 0) {
+      return;
+    }
+
+    if (!providerValue) {
+      setValue('provider', providers[0], { shouldDirty: false });
+      return;
+    }
+
+    if (selectedModel) {
+      return;
+    }
+
+    const defaultModel = models[providerValue]?.[0];
+    if (defaultModel) {
+      setValue('model', defaultModel, { shouldDirty: false });
+    }
+  }, [isAdmin, providerValue, providers, selectedModel, models, setValue]);
 
   /* Mutations */
   const update = useUpdateAgentMutation({
@@ -405,17 +445,21 @@ export default function AgentPanel() {
     async (data: AgentForm) => {
       const tools = data.tools ?? [];
 
-      if (data.execute_code === true) {
+      if (isAdmin && data.execute_code === true) {
         tools.push(Tools.execute_code);
       }
-      if (data.file_search === true) {
+      if (isAdmin && data.file_search === true) {
         tools.push(Tools.file_search);
       }
-      if (data.web_search === true) {
+      if (isAdmin && data.web_search === true) {
         tools.push(Tools.web_search);
       }
 
-      const { payload: basePayload, provider, model } = composeAgentUpdatePayload(data, agent_id);
+      const {
+        payload: basePayload,
+        provider,
+        model,
+      } = composeAgentUpdatePayload(data, agent_id, isAdmin);
 
       if (agent_id) {
         if (data.avatar_action === 'upload' && isAvatarUploadOnlyDirty(dirtyFields)) {
@@ -436,7 +480,10 @@ export default function AgentPanel() {
           }
           return;
         }
-        update.mutate({ agent_id, data: { ...basePayload, tools } });
+        update.mutate({
+          agent_id,
+          data: isAdmin ? { ...basePayload, tools } : basePayload,
+        });
         return;
       }
 
@@ -453,9 +500,11 @@ export default function AgentPanel() {
         });
       }
 
-      create.mutate({ ...basePayload, model, tools, provider });
+      create.mutate(
+        isAdmin ? { ...basePayload, model, tools, provider } : { ...basePayload, model, provider },
+      );
     },
-    [agent_id, create, dirtyFields, handleAvatarUpload, update, showToast, localize],
+    [agent_id, create, dirtyFields, handleAvatarUpload, isAdmin, update, showToast, localize],
   );
 
   const handleSelectAgent = useCallback(() => {
@@ -469,12 +518,15 @@ export default function AgentPanel() {
       return true;
     }
 
-    if (user?.role === SystemRoles.ADMIN) {
+    if (isAdmin) {
       return true;
     }
 
     return canEdit;
-  }, [agentQuery.data?.id, user?.role, canEdit]);
+  }, [agentQuery.data?.id, isAdmin, canEdit]);
+
+  const effectiveActivePanel =
+    !isAdmin && activePanel !== Panel.builder ? Panel.builder : activePanel;
 
   return (
     <FormProvider {...methods}>
@@ -536,21 +588,21 @@ export default function AgentPanel() {
             </div>
           </div>
         )}
-        {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.model && (
+        {canEditAgent && !agentQuery.isInitialLoading && effectiveActivePanel === Panel.model && (
           <ModelPanel models={models} providers={providers} setActivePanel={setActivePanel} />
         )}
-        {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
+        {canEditAgent && !agentQuery.isInitialLoading && effectiveActivePanel === Panel.builder && (
           <AgentConfig />
         )}
-        {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.advanced && (
-          <AdvancedPanel />
-        )}
+        {canEditAgent &&
+          !agentQuery.isInitialLoading &&
+          effectiveActivePanel === Panel.advanced && <AdvancedPanel />}
         {canEditAgent && !agentQuery.isInitialLoading && (
           <AgentFooter
             createMutation={create}
             updateMutation={update}
             isAvatarUploading={isAvatarUploadInFlight || uploadAvatarMutation.isLoading}
-            activePanel={activePanel}
+            activePanel={effectiveActivePanel}
             setActivePanel={setActivePanel}
             setCurrentAgentId={setCurrentAgentId}
           />
