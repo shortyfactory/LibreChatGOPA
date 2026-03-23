@@ -12,12 +12,14 @@ interface AssistantConversationStartersProps {
   };
   inputClass: string;
   labelClass: string;
+  readOnly?: boolean;
 }
 
 const AssistantConversationStarters: React.FC<AssistantConversationStartersProps> = ({
   field,
   inputClass,
   labelClass,
+  readOnly = false,
 }) => {
   const localize = useLocalize();
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -25,6 +27,10 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
   const [newStarter, setNewStarter] = useState('');
 
   const handleAddStarter = () => {
+    if (readOnly) {
+      return;
+    }
+
     if (newStarter.trim() && field.value.length < Constants.MAX_CONVO_STARTERS) {
       const newValues = [newStarter, ...field.value];
       field.onChange(newValues);
@@ -33,6 +39,10 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
   };
 
   const handleDeleteStarter = (index: number) => {
+    if (readOnly) {
+      return;
+    }
+
     const newValues = field.value.filter((_, i) => i !== index);
     field.onChange(newValues);
   };
@@ -77,6 +87,7 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
             maxLength={64}
             className={`${inputClass} pr-10`}
             type="text"
+            readOnly={readOnly}
             placeholder={
               hasReachedMax
                 ? localize('com_assistants_max_starters_reached')
@@ -84,6 +95,10 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
             }
             onChange={(e) => setNewStarter(e.target.value)}
             onKeyDown={(e) => {
+              if (readOnly) {
+                return;
+              }
+
               if (e.key === 'Enter') {
                 e.preventDefault();
                 if (hasReachedMax) {
@@ -96,7 +111,7 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
           />
           <Transition
             nodeRef={nodeRef}
-            in={field.value.length < Constants.MAX_CONVO_STARTERS}
+            in={!readOnly && field.value.length < Constants.MAX_CONVO_STARTERS}
             timeout={200}
             unmountOnExit
           >
@@ -129,7 +144,12 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
             <input
               ref={(el) => (inputRefs.current[index + 1] = el)}
               value={starter}
+              readOnly={readOnly}
               onChange={(e) => {
+                if (readOnly) {
+                  return;
+                }
+
                 const newValue = [...field.value];
                 newValue[index] = e.target.value;
                 field.onChange(newValue);
@@ -138,15 +158,17 @@ const AssistantConversationStarters: React.FC<AssistantConversationStartersProps
               type="text"
               maxLength={64}
             />
-            <TooltipAnchor
-              side="top"
-              description={localize('com_ui_delete')}
-              aria-label={localize('com_ui_delete')}
-              className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-surface-hover"
-              onClick={() => handleDeleteStarter(index)}
-            >
-              <X className="size-4" aria-hidden="true" />
-            </TooltipAnchor>
+            {!readOnly && (
+              <TooltipAnchor
+                side="top"
+                description={localize('com_ui_delete')}
+                aria-label={localize('com_ui_delete')}
+                className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-surface-hover"
+                onClick={() => handleDeleteStarter(index)}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </TooltipAnchor>
+            )}
           </div>
         ))}
       </div>

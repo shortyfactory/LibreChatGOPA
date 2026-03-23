@@ -4,6 +4,7 @@ import { Spinner, useToastContext, SelectDropDown } from '@librechat/client';
 import { useForm, FormProvider, Controller, useWatch } from 'react-hook-form';
 import {
   Tools,
+  SystemRoles,
   Capabilities,
   actionDelimiter,
   ImageVisionTool,
@@ -20,7 +21,7 @@ import {
 import { cn, cardStyle, defaultTextProps, removeFocusOutlines } from '~/utils';
 import AssistantConversationStarters from './AssistantConversationStarters';
 import AssistantToolsDialog from '~/components/Tools/AssistantToolsDialog';
-import { useSelectAssistant, useLocalize } from '~/hooks';
+import { useAuthContext, useSelectAssistant, useLocalize } from '~/hooks';
 import { useAssistantsMapContext } from '~/Providers';
 import AppendDateCheckbox from './AppendDateCheckbox';
 import CapabilitiesForm from './CapabilitiesForm';
@@ -53,11 +54,13 @@ export default function AssistantPanel({
 }: AssistantPanelProps & { assistantsConfig?: TConfig | null }) {
   const modelsQuery = useGetModelsQuery();
   const assistantMap = useAssistantsMapContext();
+  const { user } = useAuthContext();
 
   const { data: allTools = [] } = useAvailableAgentToolsQuery();
   const { onSelect: onSelectAssistant } = useSelectAssistant(endpoint);
   const { showToast } = useToastContext();
   const localize = useLocalize();
+  const canEditAssistant = user?.role === SystemRoles.ADMIN;
 
   const methods = useForm<AssistantForm>({
     defaultValues: defaultAssistantFormValues,
@@ -144,6 +147,10 @@ export default function AssistantPanel({
   }, [assistant]);
 
   const onSubmit = (data: AssistantForm) => {
+    if (!canEditAssistant) {
+      return;
+    }
+
     const tools: Array<FunctionTool | string> = [...functions].map((functionName) => {
       if (!functionName.includes(actionDelimiter)) {
         return functionName;
@@ -234,6 +241,7 @@ export default function AssistantPanel({
                 endpoint={endpoint}
                 documentsMap={documentsMap}
                 allTools={allTools}
+                canCreate={canEditAssistant}
                 setCurrentAssistantId={setCurrentAssistantId}
                 selectedAssistant={current_assistant_id ?? null}
                 createMutation={create}
@@ -256,6 +264,11 @@ export default function AssistantPanel({
           )}
         </div>
         <div className="bg-surface-50 h-auto px-4 pb-8 pt-3 dark:bg-transparent">
+          {!canEditAssistant && (
+            <div className="mb-4 rounded-xl border border-border-light bg-surface-secondary px-3 py-2 text-sm text-text-secondary">
+              {localize('com_assistants_admin_readonly')}
+            </div>
+          )}
           {/* Avatar & Name */}
           <div className="mb-4">
             <AssistantAvatar
@@ -264,6 +277,7 @@ export default function AssistantPanel({
               metadata={assistant['metadata'] ?? null}
               endpoint={endpoint}
               version={version}
+              readOnly={!canEditAssistant}
             />
             <label className={labelClass} htmlFor="name">
               {localize('com_ui_name')}
@@ -276,6 +290,7 @@ export default function AssistantPanel({
                   {...field}
                   value={field.value ?? ''}
                   {...{ max: 256 }}
+                  readOnly={!canEditAssistant}
                   className={inputClass}
                   id="name"
                   type="text"
@@ -304,6 +319,7 @@ export default function AssistantPanel({
                   {...field}
                   value={field.value ?? ''}
                   {...{ max: 512 }}
+                  readOnly={!canEditAssistant}
                   className={inputClass}
                   id="description"
                   type="text"
@@ -326,6 +342,7 @@ export default function AssistantPanel({
                   {...field}
                   value={field.value ?? ''}
                   {...{ max: 32768 }}
+                  readOnly={!canEditAssistant}
                   className={cn(inputClass, 'min-h-[100px] resize-y')}
                   id="instructions"
                   placeholder={localize('com_assistants_instructions_placeholder')}
@@ -336,7 +353,12 @@ export default function AssistantPanel({
           </div>
 
           {/* Append Today's Date */}
-          <AppendDateCheckbox control={control} setValue={setValue} getValues={getValues} />
+          <AppendDateCheckbox
+            control={control}
+            setValue={setValue}
+            getValues={getValues}
+            disabled={!canEditAssistant}
+          />
 
           {/* Conversation Starters */}
           <div className="relative mb-6">
@@ -350,6 +372,7 @@ export default function AssistantPanel({
                   field={field}
                   inputClass={inputClass}
                   labelClass={labelClass}
+                  readOnly={!canEditAssistant}
                 />
               )}
             />
@@ -367,6 +390,7 @@ export default function AssistantPanel({
                 <>
                   <SelectDropDown
                     emptyTitle={true}
+                    disabled={!canEditAssistant}
                     value={field.value}
                     setValue={field.onChange}
                     availableValues={availableModels}
@@ -389,7 +413,12 @@ export default function AssistantPanel({
           </div>
           {/* Knowledge */}
           {(codeEnabled === true || retrievalEnabled === true) && version == 1 && (
-            <Knowledge assistant_id={assistant_id} files={files} endpoint={endpoint} />
+            <Knowledge
+              assistant_id={assistant_id}
+              files={files}
+              endpoint={endpoint}
+              readOnly={!canEditAssistant}
+            />
           )}
           {/* Capabilities */}
           <CapabilitiesForm
@@ -398,6 +427,7 @@ export default function AssistantPanel({
             codeEnabled={codeEnabled}
             assistantsConfig={assistantsConfig}
             retrievalEnabled={retrievalEnabled}
+            readOnly={!canEditAssistant}
           />
           {/* Tools */}
           <div className="mb-6">
@@ -413,18 +443,33 @@ export default function AssistantPanel({
                   tool={func}
                   allTools={allTools}
                   assistant_id={assistant_id}
+                  readOnly={!canEditAssistant}
                 />
               ))}
               {actions
                 .filter((action) => action.assistant_id === assistant_id)
                 .map((action, i) => {
-                  return <Action key={i} action={action} onClick={() => setAction(action)} />;
+                  return (
+                    <Action
+                      key={i}
+                      action={action}
+                      readOnly={!canEditAssistant}
+                      onClick={() => setAction(action)}
+                    />
+                  );
                 })}
               <div className="flex space-x-2">
                 {toolsEnabled === true && (
                   <button
                     type="button"
-                    onClick={() => setShowToolDialog(true)}
+                    disabled={!canEditAssistant}
+                    onClick={() => {
+                      if (!canEditAssistant) {
+                        return;
+                      }
+
+                      setShowToolDialog(true);
+                    }}
                     className="btn btn-neutral border-token-border-light relative h-8 w-full rounded-lg font-medium"
                   >
                     <div className="flex w-full items-center justify-center gap-2">
@@ -435,8 +480,12 @@ export default function AssistantPanel({
                 {actionsEnabled === true && (
                   <button
                     type="button"
-                    disabled={!assistant_id}
+                    disabled={!assistant_id || !canEditAssistant}
                     onClick={() => {
+                      if (!canEditAssistant) {
+                        return;
+                      }
+
                       if (!assistant_id) {
                         return showToast({
                           message: localize('com_assistants_actions_disabled'),
@@ -457,17 +506,20 @@ export default function AssistantPanel({
           </div>
           <div className="flex items-center justify-end gap-2">
             {/* Context Button */}
-            <ContextButton
-              assistant_id={assistant_id}
-              activeModel={activeModel}
-              setCurrentAssistantId={setCurrentAssistantId}
-              createMutation={create}
-              endpoint={endpoint}
-            />
+            {canEditAssistant && (
+              <ContextButton
+                assistant_id={assistant_id}
+                activeModel={activeModel}
+                setCurrentAssistantId={setCurrentAssistantId}
+                createMutation={create}
+                endpoint={endpoint}
+              />
+            )}
             {/* Submit Button */}
             <button
               className="btn btn-primary focus:shadow-outline flex w-full items-center justify-center px-4 py-2 font-semibold text-white hover:bg-green-600 focus:border-green-500"
               type="submit"
+              disabled={!canEditAssistant}
             >
               {submitContext}
             </button>
@@ -475,7 +527,7 @@ export default function AssistantPanel({
         </div>
         <AssistantToolsDialog
           endpoint={endpoint}
-          isOpen={showToolDialog}
+          isOpen={canEditAssistant && showToolDialog}
           setIsOpen={setShowToolDialog}
         />
       </form>

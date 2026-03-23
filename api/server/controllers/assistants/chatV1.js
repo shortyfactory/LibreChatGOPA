@@ -47,6 +47,13 @@ const { getTransactions } = require('~/models/Transaction');
 const { checkBalance } = require('~/models/balanceMethods');
 const { getConvo } = require('~/models/Conversation');
 const getLogStores = require('~/cache/getLogStores');
+const {
+  applyAssistantRunFileNameContext,
+  applyAssistantRunToolAccess,
+  buildAssistantAttachmentTools,
+  buildRuntimeAssistantPayload,
+  requiresTemporaryAssistant,
+} = require('~/server/controllers/assistants/toolAccess');
 const { getOpenAIClient } = require('./helpers');
 
 const isLegacyAzureAssistantsEndpoint = (endpoint) =>
@@ -423,6 +430,17 @@ const chatV1 = async (req, res) => {
   let requestMessage = null;
   /** @type {undefined | Promise<ChatCompletion>} */
   let visionPromise;
+  /** @type {Assistant | null} */
+  let assistantConfig = null;
+  let assistantToolAvailability = {
+    hasCodeInterpreter: false,
+    hasFileSearch: false,
+    hasAssistantFileIds: false,
+    hasCodeInterpreterFiles: false,
+    hasKnowledgeFiles: false,
+  };
+  /** @type {string | null} */
+  let temporaryAssistantId = null;
 
   const userMessageId = v4();
   const responseMessageId = v4();
@@ -435,6 +453,24 @@ const chatV1 = async (req, res) => {
 
   /** @type {Run | undefined} - The completed run, undefined if incomplete */
   let completedRun;
+
+  const cleanupTemporaryAssistant = async () => {
+    if (!openai || !temporaryAssistantId) {
+      return;
+    }
+
+    const assistantIdToDelete = temporaryAssistantId;
+    temporaryAssistantId = null;
+
+    try {
+      await openai.beta.assistants.delete(assistantIdToDelete);
+    } catch (error) {
+      logger.warn('[/assistants/chat/] Failed to delete temporary runtime assistant', {
+        assistant_id: assistantIdToDelete,
+        error: error?.message ?? String(error),
+      });
+    }
+  };
 
   const handleError = async (error) => {
     const defaultErrorMessage =
@@ -618,6 +654,29 @@ const chatV1 = async (req, res) => {
       endpointOption,
       clientTimestamp,
     });
+    assistantConfig = await openai.beta.assistants.retrieve(assistant_id);
+    assistantToolAvailability = applyAssistantRunToolAccess({
+      assistant: assistantConfig,
+      body,
+    });
+    await applyAssistantRunFileNameContext({
+      openai,
+      assistant: assistantConfig,
+      availability: assistantToolAvailability,
+      body,
+    });
+    if (requiresTemporaryAssistant(assistantToolAvailability)) {
+      const temporaryAssistant = await openai.beta.assistants.create(
+        buildRuntimeAssistantPayload({
+          endpoint,
+          userId: req.user.id,
+          assistant: assistantConfig,
+          availability: assistantToolAvailability,
+        }),
+      );
+      temporaryAssistantId = temporaryAssistant.id;
+      body.assistant_id = temporaryAssistantId;
+    }
 
     const getRequestFileIds = async () => {
       let thread_file_ids = [];
@@ -632,10 +691,13 @@ const chatV1 = async (req, res) => {
       if (file_ids.length || thread_file_ids.length) {
         attachedFileIds = new Set([...file_ids, ...thread_file_ids]);
         if (isLegacyAzureAssistantsEndpoint(endpoint)) {
-          userMessage.attachments = Array.from(attachedFileIds).map((file_id) => ({
-            file_id,
-            tools: [{ type: 'file_search' }],
-          }));
+          const attachmentTools = buildAssistantAttachmentTools(assistantToolAvailability);
+          if (attachmentTools.length > 0) {
+            userMessage.attachments = Array.from(attachedFileIds).map((file_id) => ({
+              file_id,
+              tools: attachmentTools,
+            }));
+          }
         } else {
           userMessage.file_ids = Array.from(attachedFileIds);
         }
@@ -653,7 +715,7 @@ const chatV1 = async (req, res) => {
         return;
       }
 
-      const assistant = await openai.beta.assistants.retrieve(assistant_id);
+      const assistant = assistantConfig ?? (await openai.beta.assistants.retrieve(assistant_id));
       const visionToolIndex = assistant.tools.findIndex(
         (tool) => tool?.function && tool?.function?.name === ImageVisionTool.function.name,
       );
@@ -971,6 +1033,8 @@ const chatV1 = async (req, res) => {
     }
   } catch (error) {
     await handleError(error);
+  } finally {
+    await cleanupTemporaryAssistant();
   }
 };
 

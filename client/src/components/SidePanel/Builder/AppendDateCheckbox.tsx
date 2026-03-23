@@ -15,12 +15,21 @@ interface AppendDateCheckboxProps {
   control: Control<AssistantForm>;
   setValue: UseFormSetValue<AssistantForm>;
   getValues: UseFormGetValues<AssistantForm>;
+  disabled?: boolean;
 }
 
-export default function AppendDateCheckbox({ control, setValue }: AppendDateCheckboxProps) {
+export default function AppendDateCheckbox({
+  control,
+  setValue,
+  disabled = false,
+}: AppendDateCheckboxProps) {
   const localize = useLocalize();
 
   const handleChange = (checked: boolean) => {
+    if (disabled) {
+      return;
+    }
+
     setValue('append_current_datetime', checked, {
       shouldDirty: true,
     });
@@ -38,6 +47,7 @@ export default function AppendDateCheckbox({ control, setValue }: AppendDateChec
                 {...field}
                 id="append_current_datetime"
                 checked={field.value}
+                disabled={disabled}
                 onCheckedChange={handleChange}
                 className="relative float-left mr-2 inline-flex h-4 w-4 cursor-pointer"
                 value={field.value.toString()}
@@ -49,7 +59,9 @@ export default function AppendDateCheckbox({ control, setValue }: AppendDateChec
             <label
               id="append-date-label"
               htmlFor="append_current_datetime"
-              className="form-check-label text-token-text-primary w-full cursor-pointer"
+              className={`form-check-label text-token-text-primary w-full ${
+                disabled ? 'cursor-default opacity-60' : 'cursor-pointer'
+              }`}
             >
               {localize('com_assistants_append_date')}
             </label>

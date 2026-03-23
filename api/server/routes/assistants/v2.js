@@ -1,5 +1,6 @@
 const express = require('express');
 const { configMiddleware } = require('~/server/middleware');
+const checkAdmin = require('~/server/middleware/roles/admin');
 const v1 = require('~/server/controllers/assistants/v1');
 const v2 = require('~/server/controllers/assistants/v2');
 const documents = require('./documents');
@@ -13,7 +14,7 @@ router.use(configMiddleware);
  * Assistant actions route.
  * @route GET|POST /assistants/actions
  */
-router.use('/actions', actions);
+router.use('/actions', checkAdmin, actions);
 
 /**
  * Create an assistant.
@@ -35,7 +36,7 @@ router.use('/documents', documents);
  * @param {AssistantCreateParams} req.body - The assistant creation parameters.
  * @returns {Assistant} 201 - success response - application/json
  */
-router.post('/', v2.createAssistant);
+router.post('/', checkAdmin, v2.createAssistant);
 
 /**
  * Retrieves an assistant.
@@ -52,7 +53,7 @@ router.get('/:id', v1.retrieveAssistant);
  * @param {AssistantUpdateParams} req.body - The assistant update parameters.
  * @returns {Assistant} 200 - success response - application/json
  */
-router.patch('/:id', v2.patchAssistant);
+router.patch('/:id', checkAdmin, v2.patchAssistant);
 
 /**
  * Deletes an assistant.
@@ -60,7 +61,7 @@ router.patch('/:id', v2.patchAssistant);
  * @param {string} req.params.id - Assistant identifier.
  * @returns {Assistant} 200 - success response - application/json
  */
-router.delete('/:id', v1.deleteAssistant);
+router.delete('/:id', checkAdmin, v1.deleteAssistant);
 
 /**
  * Returns a list of assistants.
@@ -78,6 +79,6 @@ router.get('/', v1.listAssistants);
  * @param {string} [req.body.metadata] - Optional metadata for the assistant's avatar.
  * @returns {Object} 200 - success response - application/json
  */
-router.post('/avatar/:assistant_id', v1.uploadAssistantAvatar);
+router.post('/avatar/:assistant_id', checkAdmin, v1.uploadAssistantAvatar);
 
 module.exports = router;

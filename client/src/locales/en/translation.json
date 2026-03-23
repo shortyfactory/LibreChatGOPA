@@ -107,6 +107,7 @@
   "com_assistants_add_actions": "Add Actions",
   "com_assistants_add_mcp_server_tools": "Add MCP Server Tools",
   "com_assistants_add_tools": "Add Tools",
+  "com_assistants_admin_readonly": "Only admins can edit assistants in this builder. You can still view the configuration.",
   "com_assistants_allow_sites_you_trust": "Only allow sites you trust.",
   "com_assistants_append_date": "Append Current Date & Time",
   "com_assistants_append_date_tooltip": "When enabled, the current client date and time will be appended to the assistant system instructions.",

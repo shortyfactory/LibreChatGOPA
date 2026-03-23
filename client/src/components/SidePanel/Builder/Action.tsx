@@ -3,20 +3,31 @@ import { GearIcon } from '@librechat/client';
 import type { Action } from 'librechat-data-provider';
 import { cn } from '~/utils';
 
-export default function Action({ action, onClick }: { action: Action; onClick: () => void }) {
+export default function Action({
+  action,
+  onClick,
+  readOnly = false,
+}: {
+  action: Action;
+  onClick: () => void;
+  readOnly?: boolean;
+}) {
   const [isHovering, setIsHovering] = useState(false);
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
+      role={readOnly ? undefined : 'button'}
+      tabIndex={readOnly ? -1 : 0}
+      onClick={readOnly ? undefined : onClick}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (!readOnly && (e.key === 'Enter' || e.key === ' ')) {
           onClick();
         }
       }}
-      className="group flex w-full rounded-lg border border-border-medium text-sm hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-text-primary"
+      className={cn(
+        'group flex w-full rounded-lg border border-border-medium text-sm focus:outline-none',
+        readOnly ? '' : 'hover:cursor-pointer focus:ring-2 focus:ring-text-primary',
+      )}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
       aria-label={`Action for ${action.metadata.domain}`}
@@ -30,7 +41,7 @@ export default function Action({ action, onClick }: { action: Action; onClick: (
       <div
         className={cn(
           'h-9 w-9 min-w-9 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-surface-tertiary focus:outline-none focus:ring-2 focus:ring-text-primary group-focus:flex',
-          isHovering ? 'flex' : 'hidden',
+          isHovering && !readOnly ? 'flex' : 'hidden',
         )}
         aria-label="Settings"
       >

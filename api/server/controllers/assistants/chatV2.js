@@ -31,6 +31,12 @@ const { getTransactions } = require('~/models/Transaction');
 const { checkBalance } = require('~/models/balanceMethods');
 const { getConvo } = require('~/models/Conversation');
 const getLogStores = require('~/cache/getLogStores');
+const {
+  applyAssistantRunFileNameContext,
+  applyAssistantRunToolAccess,
+  buildRuntimeAssistantPayload,
+  requiresTemporaryAssistant,
+} = require('~/server/controllers/assistants/toolAccess');
 const { getOpenAIClient } = require('./helpers');
 
 const isLegacyAzureAssistantsEndpoint = (endpoint) =>
@@ -83,6 +89,17 @@ const chatV2 = async (req, res) => {
   let attachedFileIds = new Set();
   /** @type {TMessage | null} */
   let requestMessage = null;
+  /** @type {Assistant | null} */
+  let assistantConfig = null;
+  let assistantToolAvailability = {
+    hasCodeInterpreter: false,
+    hasFileSearch: false,
+    hasAssistantFileIds: false,
+    hasCodeInterpreterFiles: false,
+    hasKnowledgeFiles: false,
+  };
+  /** @type {string | null} */
+  let temporaryAssistantId = null;
 
   const userMessageId = v4();
   const responseMessageId = v4();
@@ -95,6 +112,24 @@ const chatV2 = async (req, res) => {
 
   /** @type {Run | undefined} - The completed run, undefined if incomplete */
   let completedRun;
+
+  const cleanupTemporaryAssistant = async () => {
+    if (!openai || !temporaryAssistantId) {
+      return;
+    }
+
+    const assistantIdToDelete = temporaryAssistantId;
+    temporaryAssistantId = null;
+
+    try {
+      await openai.beta.assistants.delete(assistantIdToDelete);
+    } catch (error) {
+      logger.warn('[/assistants/chat/] Failed to delete temporary runtime assistant', {
+        assistant_id: assistantIdToDelete,
+        error: error?.message ?? String(error),
+      });
+    }
+  };
 
   const getContext = () => ({
     openai,
@@ -199,6 +234,29 @@ const chatV2 = async (req, res) => {
       endpointOption,
       clientTimestamp,
     });
+    assistantConfig = await openai.beta.assistants.retrieve(assistant_id);
+    assistantToolAvailability = applyAssistantRunToolAccess({
+      assistant: assistantConfig,
+      body,
+    });
+    await applyAssistantRunFileNameContext({
+      openai,
+      assistant: assistantConfig,
+      availability: assistantToolAvailability,
+      body,
+    });
+    if (requiresTemporaryAssistant(assistantToolAvailability)) {
+      const temporaryAssistant = await openai.beta.assistants.create(
+        buildRuntimeAssistantPayload({
+          endpoint,
+          userId: req.user.id,
+          assistant: assistantConfig,
+          availability: assistantToolAvailability,
+        }),
+      );
+      temporaryAssistantId = temporaryAssistant.id;
+      body.assistant_id = temporaryAssistantId;
+    }
 
     const getRequestFileIds = async () => {
       let thread_file_ids = [];
@@ -210,11 +268,11 @@ const chatV2 = async (req, res) => {
       }
 
       if (files.length || thread_file_ids.length) {
-        attachedFileIds = new Set([...file_ids, ...thread_file_ids]);
+        attachedFileIds = new Set(thread_file_ids);
 
-        let attachmentIndex = 0;
         for (const file of files) {
           file_ids.push(file.file_id);
+          attachedFileIds.add(file.file_id);
           if (file.type.startsWith('image')) {
             userMessage.content.push({
               type: ContentTypes.IMAGE_FILE,
@@ -222,28 +280,29 @@ const chatV2 = async (req, res) => {
             });
           }
 
-          if (!userMessage.attachments) {
-            userMessage.attachments = [];
+          const attachmentTools = [];
+          if (assistantToolAvailability.hasCodeInterpreter) {
+            attachmentTools.push({ type: ToolCallTypes.CODE_INTERPRETER });
           }
 
-          userMessage.attachments.push({
-            file_id: file.file_id,
-            tools: [{ type: ToolCallTypes.CODE_INTERPRETER }],
-          });
-
-          if (file.type.startsWith('image')) {
-            continue;
+          if (!file.type.startsWith('image') && assistantToolAvailability.hasFileSearch) {
+            const mimeType = file.type;
+            const isSupportedByRetrieval = retrievalMimeTypes.some((regex) => regex.test(mimeType));
+            if (isSupportedByRetrieval) {
+              attachmentTools.push({ type: ToolCallTypes.FILE_SEARCH });
+            }
           }
 
-          const mimeType = file.type;
-          const isSupportedByRetrieval = retrievalMimeTypes.some((regex) => regex.test(mimeType));
-          if (isSupportedByRetrieval) {
-            userMessage.attachments[attachmentIndex].tools.push({
-              type: ToolCallTypes.FILE_SEARCH,
+          if (attachmentTools.length > 0) {
+            if (!userMessage.attachments) {
+              userMessage.attachments = [];
+            }
+
+            userMessage.attachments.push({
+              file_id: file.file_id,
+              tools: attachmentTools,
             });
           }
-
-          attachmentIndex++;
         }
       }
     };
@@ -495,6 +554,8 @@ const chatV2 = async (req, res) => {
     }
   } catch (error) {
     await handleError(error);
+  } finally {
+    await cleanupTemporaryAssistant();
   }
 };
 

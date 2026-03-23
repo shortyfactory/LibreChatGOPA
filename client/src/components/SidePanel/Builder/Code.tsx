@@ -12,7 +12,13 @@ import type { AssistantForm } from '~/common';
 import { useLocalize } from '~/hooks';
 import { ESide } from '~/common';
 
-export default function Code({ version }: { version: number | string }) {
+export default function Code({
+  version,
+  disabled = false,
+}: {
+  version: number | string;
+  disabled?: boolean;
+}) {
   const localize = useLocalize();
   const methods = useFormContext<AssistantForm>();
   const { control, setValue, getValues } = methods;
@@ -28,6 +34,7 @@ export default function Code({ version }: { version: number | string }) {
               <Checkbox
                 {...field}
                 checked={field.value}
+                disabled={disabled}
                 onCheckedChange={field.onChange}
                 className="relative float-left mr-2 inline-flex h-4 w-4 cursor-pointer"
                 value={field.value.toString()}
@@ -37,16 +44,23 @@ export default function Code({ version }: { version: number | string }) {
           />
           <button
             type="button"
+            disabled={disabled}
             className="flex items-center space-x-2"
-            onClick={() =>
+            onClick={() => {
+              if (disabled) {
+                return;
+              }
+
               setValue(Capabilities.code_interpreter, !getValues(Capabilities.code_interpreter), {
                 shouldDirty: true,
-              })
-            }
+              });
+            }}
           >
             <label
               id={Capabilities.code_interpreter}
-              className="form-check-label text-token-text-primary w-full cursor-pointer"
+              className={`form-check-label text-token-text-primary w-full ${
+                disabled ? 'cursor-default opacity-60' : 'cursor-pointer'
+              }`}
               htmlFor={Capabilities.code_interpreter}
             >
               {localize('com_assistants_code_interpreter')}

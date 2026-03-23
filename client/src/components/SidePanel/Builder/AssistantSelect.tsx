@@ -61,6 +61,7 @@ export default function AssistantSelect({
   setCurrentAssistantId,
   createMutation,
   allTools,
+  canCreate = true,
 }: {
   reset: UseFormReset<AssistantForm>;
   value: TAssistantOption;
@@ -70,6 +71,7 @@ export default function AssistantSelect({
   setCurrentAssistantId: React.Dispatch<React.SetStateAction<string | undefined>>;
   createMutation: UseMutationResult<Assistant, Error, AssistantCreateParams>;
   allTools?: TPlugin[];
+  canCreate?: boolean;
 }) {
   const localize = useLocalize();
   const fileMap = useFileMapContext();
@@ -198,6 +200,10 @@ export default function AssistantSelect({
 
       createMutation.reset();
       if (!assistant) {
+        if (!canCreate) {
+          return;
+        }
+
         setCurrentAssistantId(undefined);
         return reset({
           ...defaultAssistantFormValues,
@@ -279,6 +285,7 @@ export default function AssistantSelect({
       setCurrentAssistantId(assistant.id);
     },
     [
+      canCreate,
       query.data,
       reset,
       setCurrentAssistantId,
@@ -313,7 +320,7 @@ export default function AssistantSelect({
   const createAssistant = localize('com_ui_create_assistant');
   return (
     <SelectDropDown
-      value={!value ? createAssistant : value}
+      value={value || null}
       setValue={createDropdownSetter(onSelect)}
       availableValues={
         query.data ?? [
@@ -327,6 +334,7 @@ export default function AssistantSelect({
       showAbove={false}
       showLabel={false}
       emptyTitle={true}
+      placeholder={canCreate ? createAssistant : localize('com_endpoint_assistant_placeholder')}
       containerClassName="flex-grow"
       searchClassName="dark:from-gray-850"
       searchPlaceholder={localize('com_assistants_search_name')}
@@ -340,16 +348,24 @@ export default function AssistantSelect({
         'mt-1 rounded-md dark:border-gray-700 dark:bg-gray-850',
         'z-50 flex h-[40px] w-full flex-none items-center justify-center px-4 hover:cursor-pointer hover:border-green-500 focus:border-gray-400',
       )}
-      renderOption={() => (
-        <span className="flex items-center gap-1.5 truncate">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-gray-800 dark:text-gray-100">
-            <Plus className="w-[16px]" />
-          </span>
-          <span className={cn('ml-4 flex h-6 items-center gap-1 text-gray-800 dark:text-gray-100')}>
-            {createAssistant}
-          </span>
-        </span>
-      )}
+      renderOption={
+        canCreate
+          ? () => (
+              <span className="flex items-center gap-1.5 truncate">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-gray-800 dark:text-gray-100">
+                  <Plus className="w-[16px]" />
+                </span>
+                <span
+                  className={cn(
+                    'ml-4 flex h-6 items-center gap-1 text-gray-800 dark:text-gray-100',
+                  )}
+                >
+                  {createAssistant}
+                </span>
+              </span>
+            )
+          : undefined
+      }
     />
   );
 }

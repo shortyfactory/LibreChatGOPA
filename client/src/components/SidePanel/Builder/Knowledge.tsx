@@ -29,10 +29,12 @@ export default function Knowledge({
   endpoint,
   assistant_id,
   files: _files,
+  readOnly = false,
 }: {
   endpoint: AssistantsEndpoint;
   assistant_id: string;
   files?: [string, ExtendedFile][];
+  readOnly?: boolean;
 }) {
   const localize = useLocalize();
   const { setFilesLoading } = useChatContext();
@@ -92,6 +94,7 @@ export default function Knowledge({
           setFiles={setFiles}
           setFilesLoading={setFilesLoading}
           assistant_id={assistant_id}
+          readOnly={readOnly}
           fileFilter={(file: ExtendedFile) =>
             retrievalMimeTypes.some((regex) => regex.test(file.type ?? ''))
           }
@@ -102,6 +105,7 @@ export default function Knowledge({
           setFiles={setFiles}
           setFilesLoading={setFilesLoading}
           assistant_id={assistant_id}
+          readOnly={readOnly}
           fileFilter={(file: ExtendedFile) =>
             !retrievalMimeTypes.some((regex) => regex.test(file.type ?? ''))
           }
@@ -110,7 +114,7 @@ export default function Knowledge({
         <div>
           <button
             type="button"
-            disabled={!assistant_id}
+            disabled={!assistant_id || readOnly}
             className="btn btn-neutral border-token-border-light relative h-8 rounded-lg font-medium"
             onClick={handleButtonClick}
           >
@@ -121,7 +125,7 @@ export default function Knowledge({
                 style={{ display: 'none' }}
                 tabIndex={-1}
                 ref={fileInputRef}
-                disabled={!assistant_id}
+                disabled={!assistant_id || readOnly}
                 onChange={handleFileChange}
               />
               {localize('com_ui_upload_files')}

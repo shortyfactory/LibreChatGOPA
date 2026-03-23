@@ -29,12 +29,14 @@ function Avatar({
   assistant_id,
   metadata,
   createMutation,
+  readOnly = false,
 }: {
   endpoint: AssistantsEndpoint;
   version: number | string;
   assistant_id: string | null;
   metadata: null | Metadata;
   createMutation: UseMutationResult<Assistant, Error, AssistantCreateParams>;
+  readOnly?: boolean;
 }) {
   // console.log('Avatar', assistant_id, metadata, createMutation);
   const queryClient = useQueryClient();
@@ -170,6 +172,10 @@ function Avatar({
   ]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    if (readOnly) {
+      return;
+    }
+
     const file = event.target.files?.[0];
 
     if (fileConfig.avatarSizeLimit && file && file.size <= fileConfig.avatarSizeLimit) {
@@ -215,14 +221,15 @@ function Avatar({
         <Popover.Trigger asChild>
           <button
             type="button"
-            className="h-20 w-20"
+            disabled={readOnly}
+            className="h-20 w-20 disabled:cursor-default"
             aria-label={localize('com_ui_upload_avatar_label')}
           >
             {previewUrl ? <AssistantAvatar url={previewUrl} progress={progress} /> : <NoImage />}
           </button>
         </Popover.Trigger>
       </div>
-      {<AvatarMenu handleFileChange={handleFileChange} />}
+      {!readOnly && <AvatarMenu handleFileChange={handleFileChange} />}
     </Popover.Root>
   );
 }

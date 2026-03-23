@@ -19,25 +19,22 @@ import { cn } from '~/utils';
 export default function Retrieval({
   version,
   retrievalModels,
+  disabled = false,
 }: {
   version: number | string;
   retrievalModels: Set<string>;
   endpoint: AssistantsEndpoint;
+  disabled?: boolean;
 }) {
   const localize = useLocalize();
   const methods = useFormContext<AssistantForm>();
   const { control, setValue, getValues } = methods;
   const model = useWatch({ control, name: 'model' });
-  const assistant = useWatch({ control, name: 'assistant' });
 
-  const vectorStores = useMemo(() => {
-    if (typeof assistant === 'string') {
-      return [];
-    }
-    return assistant.tool_resources?.file_search;
-  }, [assistant]);
-
-  const isDisabled = useMemo(() => !retrievalModels.has(model), [model, retrievalModels]);
+  const isDisabled = useMemo(
+    () => disabled || !retrievalModels.has(model),
+    [disabled, model, retrievalModels],
+  );
 
   useEffect(() => {
     if (model && isDisabled) {

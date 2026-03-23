@@ -4,7 +4,7 @@ import { useFormContext, Controller } from 'react-hook-form';
 import type { AssistantForm } from '~/common';
 import { useLocalize } from '~/hooks';
 
-export default function ImageVision() {
+export default function ImageVision({ disabled = false }: { disabled?: boolean }) {
   const localize = useLocalize();
   const methods = useFormContext<AssistantForm>();
   const { control, setValue, getValues } = methods;
@@ -18,6 +18,7 @@ export default function ImageVision() {
           <Checkbox
             {...field}
             checked={field.value}
+            disabled={disabled}
             onCheckedChange={field.onChange}
             className="relative float-left mr-2 inline-flex h-4 w-4 cursor-pointer"
             value={field.value.toString()}
@@ -27,13 +28,19 @@ export default function ImageVision() {
       />
       <label
         id={Capabilities.image_vision}
-        className="form-check-label text-token-text-primary w-full cursor-pointer"
+        className={`form-check-label text-token-text-primary w-full ${
+          disabled ? 'cursor-default opacity-60' : 'cursor-pointer'
+        }`}
         htmlFor={Capabilities.image_vision}
-        onClick={() =>
+        onClick={() => {
+          if (disabled) {
+            return;
+          }
+
           setValue(Capabilities.image_vision, !getValues(Capabilities.image_vision), {
             shouldDirty: true,
-          })
-        }
+          });
+        }}
       >
         <div className="flex items-center">{localize('com_assistants_image_vision')}</div>
       </label>

@@ -17,10 +17,12 @@ export default function AssistantTool({
   tool,
   allTools,
   assistant_id = '',
+  readOnly = false,
 }: {
   tool: string;
   allTools: TPlugin[];
   assistant_id?: string;
+  readOnly?: boolean;
 }) {
   const [isHovering, setIsHovering] = useState(false);
   const localize = useLocalize();
@@ -78,7 +80,7 @@ export default function AssistantTool({
           </div>
         </div>
 
-        {isHovering && (
+        {isHovering && !readOnly && (
           <OGDialogTrigger asChild>
             <button
               type="button"

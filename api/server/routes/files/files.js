@@ -14,6 +14,7 @@ const {
   CacheKeys,
   FileSources,
   ResourceType,
+  SystemRoles,
   EModelEndpoint,
   PermissionBits,
   checkOpenAIStorage,
@@ -40,6 +41,13 @@ const { getLogStores } = require('~/cache');
 const { Readable } = require('stream');
 
 const router = express.Router();
+
+const isAssistantBuilderUpload = (metadata = {}) =>
+  isAssistantsEndpoint(metadata.endpoint) &&
+  typeof metadata.assistant_id === 'string' &&
+  metadata.assistant_id.length > 0 &&
+  metadata.message_file !== true &&
+  metadata.message_file !== 'true';
 
 const setDownloadHeaders = ({ file, res, filename = file.filename, type = file.type }) => {
   const cleanedFilename = cleanFileName(filename);
@@ -173,6 +181,10 @@ router.get('/config', async (req, res) => {
 
 router.delete('/', async (req, res) => {
   try {
+    if (req.body.assistant_id && req.user.role !== SystemRoles.ADMIN) {
+      return res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
+    }
+
     const { files: _files } = req.body;
 
     /** @type {MongoFile[]} */
@@ -198,6 +210,17 @@ router.delete('/', async (req, res) => {
 
     const fileIds = files.map((file) => file.file_id);
     const dbFiles = await getFiles({ file_id: { $in: fileIds } });
+
+    if (req.body.assistant_id && req.user.role === SystemRoles.ADMIN && dbFiles.length > 0) {
+      await processDeleteRequest({ req, files: dbFiles });
+      logger.debug(
+        `[/files] Assistant files deleted successfully by admin: ${dbFiles
+          .filter((f) => f.file_id)
+          .map((f) => f.file_id)
+          .join(', ')}`,
+      );
+      return res.status(200).json({ message: 'Files deleted successfully' });
+    }
 
     const ownedFiles = [];
     const nonOwnedFiles = [];
@@ -424,6 +447,10 @@ router.post('/', async (req, res) => {
 
   try {
     filterFile({ req });
+
+    if (isAssistantBuilderUpload(metadata) && req.user.role !== SystemRoles.ADMIN) {
+      return res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
+    }
 
     metadata.temp_file_id = metadata.file_id;
     metadata.file_id = req.file_id;

@@ -15,12 +15,14 @@ export default function CapabilitiesForm({
   codeEnabled,
   retrievalEnabled,
   assistantsConfig,
+  readOnly = false,
 }: {
   version: number | string;
   codeEnabled?: boolean;
   retrievalEnabled?: boolean;
   endpoint: AssistantsEndpoint;
   assistantsConfig?: TConfig | null;
+  readOnly?: boolean;
 }) {
   const localize = useLocalize();
 
@@ -54,17 +56,23 @@ export default function CapabilitiesForm({
         </span>
       </div>
       <div className="flex flex-col items-start gap-2">
-        {codeEnabled && <Code version={version} />}
+        {codeEnabled && <Code version={version} disabled={readOnly} />}
         {retrievalEnabled && (
-          <Retrieval endpoint={endpoint} version={version} retrievalModels={retrievalModels} />
+          <Retrieval
+            endpoint={endpoint}
+            version={version}
+            retrievalModels={retrievalModels}
+            disabled={readOnly}
+          />
         )}
-        {imageVisionEnabled && version == 1 && <ImageVision />}
+        {imageVisionEnabled && version == 1 && <ImageVision disabled={readOnly} />}
         {codeEnabled && version && (
           <CodeFiles
             assistant_id={assistant_id}
             version={version}
             endpoint={endpoint}
             files={files}
+            readOnly={readOnly}
           />
         )}
       </div>

@@ -19,6 +19,7 @@ export default function FileRow({
   tool_resource,
   fileFilter,
   isRTL = false,
+  readOnly = false,
   Wrapper,
 }: {
   files: Map<string, ExtendedFile> | undefined;
@@ -30,6 +31,7 @@ export default function FileRow({
   agent_id?: string;
   tool_resource?: EToolResources;
   isRTL?: boolean;
+  readOnly?: boolean;
   Wrapper?: React.FC<{ children: React.ReactNode }>;
 }) {
   const localize = useLocalize();
@@ -137,12 +139,12 @@ export default function FileRow({
                 {isImage ? (
                   <Image
                     url={getCachedPreview(file.file_id) ?? file.preview ?? file.filepath}
-                    onDelete={handleDelete}
+                    onDelete={readOnly ? undefined : handleDelete}
                     progress={file.progress}
                     source={file.source}
                   />
                 ) : (
-                  <FileContainer file={file} onDelete={handleDelete} />
+                  <FileContainer file={file} onDelete={readOnly ? undefined : handleDelete} />
                 )}
               </div>
             );

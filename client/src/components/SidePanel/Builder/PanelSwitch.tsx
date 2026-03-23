@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { defaultAssistantsVersion, resolveAssistantsConfigEndpoint } from 'librechat-data-provider';
+import {
+  SystemRoles,
+  defaultAssistantsVersion,
+  resolveAssistantsConfigEndpoint,
+} from 'librechat-data-provider';
 import type { Action, TEndpointsConfig, AssistantsEndpoint } from 'librechat-data-provider';
 import type { ActionsEndpoint } from '~/common';
 import {
@@ -10,10 +14,12 @@ import {
 import AssistantPanel from './AssistantPanel';
 import { useChatContext } from '~/Providers';
 import ActionsPanel from './ActionsPanel';
+import { useAuthContext } from '~/hooks';
 import { Panel } from '~/common';
 
 export default function PanelSwitch() {
   const { conversation, index } = useChatContext();
+  const { user } = useAuthContext();
   const [activePanel, setActivePanel] = useState(Panel.builder);
   const [action, setAction] = useState<Action | undefined>(undefined);
   const [currentAssistantId, setCurrentAssistantId] = useState<string | undefined>(
@@ -34,6 +40,7 @@ export default function PanelSwitch() {
     () => endpointsConfig?.[configEndpoint ?? ''],
     [configEndpoint, endpointsConfig],
   );
+  const canEditAssistants = user?.role === SystemRoles.ADMIN;
 
   useEffect(() => {
     const currentId = conversation?.assistant_id ?? '';
@@ -41,6 +48,20 @@ export default function PanelSwitch() {
       setCurrentAssistantId(currentId);
     }
   }, [conversation?.assistant_id]);
+
+  useEffect(() => {
+    if (canEditAssistants) {
+      return;
+    }
+
+    if (action) {
+      setAction(undefined);
+    }
+
+    if (activePanel === Panel.actions) {
+      setActivePanel(Panel.builder);
+    }
+  }, [action, activePanel, canEditAssistants]);
 
   if (!conversation?.endpoint) {
     return null;

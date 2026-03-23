@@ -7,6 +7,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const {
   SystemRoles,
   FileSources,
+  EModelEndpoint,
   ResourceType,
   AccessRoleIds,
   PrincipalType,
@@ -15,6 +16,7 @@ const { createAgent } = require('~/models/Agent');
 const { createFile } = require('~/models');
 
 jest.mock('@librechat/api', () => ({
+  ...jest.requireActual('@librechat/api'),
   getFoundryFileArrayBuffer: jest.fn(),
   getFoundryFileInfo: jest.fn(),
   isFoundryAgentsConfigured: jest.fn(),
@@ -30,7 +32,9 @@ jest.mock('~/server/services/Files/process', () => ({
 }));
 
 jest.mock('~/server/services/Files/strategies', () => ({
-  getStrategyFunctions: jest.fn(() => ({})),
+  getStrategyFunctions: jest.fn(() => ({
+    getDownloadStream: jest.fn(),
+  })),
 }));
 
 jest.mock('~/server/controllers/assistants/helpers', () => ({
@@ -49,8 +53,28 @@ jest.mock('~/cache', () => ({
   getLogStores: jest.fn(() => ({
     get: jest.fn(),
     set: jest.fn(),
+    delete: jest.fn(),
   })),
 }));
+
+jest.mock('~/cache/getLogStores', () =>
+  jest.fn(() => ({
+    get: jest.fn(),
+    set: jest.fn(),
+    delete: jest.fn(),
+  })),
+);
+
+jest.mock('fs', () => {
+  const actualFs = jest.requireActual('fs');
+  return {
+    ...actualFs,
+    promises: {
+      ...actualFs.promises,
+      unlink: jest.fn().mockResolvedValue(undefined),
+    },
+  };
+});
 
 jest.mock('~/config', () => ({
   logger: {
@@ -65,7 +89,8 @@ const {
   getFoundryFileInfo,
   isFoundryAgentsConfigured,
 } = require('@librechat/api');
-const { processDeleteRequest } = require('~/server/services/Files/process');
+const fs = require('fs');
+const { processDeleteRequest, processFileUpload } = require('~/server/services/Files/process');
 
 // Import the router after mocks
 const router = require('./files');
@@ -82,6 +107,7 @@ describe('File Routes - Delete with Agent Access', () => {
   let User;
   let methods;
   let modelsToCleanup = [];
+  let currentUserRole;
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
@@ -114,11 +140,27 @@ describe('File Routes - Delete with Agent Access', () => {
     app.use(express.json());
 
     app.use((req, res, next) => {
+      if (req.method === 'POST') {
+        req.file = {
+          originalname: 'test.txt',
+          mimetype: 'text/plain',
+          size: 100,
+          path: '/tmp/test.txt',
+          filename: 'test.txt',
+        };
+        req.file_id = uuidv4();
+      }
+
+      next();
+    });
+
+    app.use((req, res, next) => {
       req.user = {
-        id: otherUserId || 'default-user',
-        role: SystemRoles.USER,
+        id: otherUserId?.toString() || 'default-user',
+        role: currentUserRole || SystemRoles.USER,
       };
       req.app = { locals: {} };
+      req.config = { fileStrategy: 'local' };
       next();
     });
 
@@ -146,6 +188,12 @@ describe('File Routes - Delete with Agent Access', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     isFoundryAgentsConfigured.mockReturnValue(false);
+    processFileUpload.mockImplementation(async ({ res }) =>
+      res.status(200).json({
+        message: 'File uploaded and processed successfully',
+        file_id: 'test-file-id',
+      }),
+    );
 
     // Clear database - clean up all test data
     await File.deleteMany({});
@@ -158,6 +206,7 @@ describe('File Routes - Delete with Agent Access', () => {
     authorId = new mongoose.Types.ObjectId();
     otherUserId = new mongoose.Types.ObjectId();
     fileId = uuidv4();
+    currentUserRole = SystemRoles.USER;
 
     // Create users in database
     await User.create({
@@ -234,6 +283,43 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(response.body.message).toBe('You can only delete files you have access to');
       expect(response.body.unauthorizedFiles).toContain(fileId);
       expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+
+    it('should prevent non-admin users from deleting assistant builder files', async () => {
+      const response = await request(app)
+        .delete('/files')
+        .send({
+          assistant_id: 'asst_test123',
+          files: [
+            {
+              file_id: fileId,
+              filepath: '/uploads/test.txt',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Forbidden');
+      expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+
+    it('should allow admins to delete assistant builder files', async () => {
+      currentUserRole = SystemRoles.ADMIN;
+
+      const response = await request(app)
+        .delete('/files')
+        .send({
+          assistant_id: 'asst_test123',
+          files: [
+            {
+              file_id: fileId,
+              filepath: '/uploads/test.txt',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(processDeleteRequest).toHaveBeenCalled();
     });
 
     it('should allow deleting files accessible through shared agent', async () => {
@@ -441,6 +527,49 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(response.body.message).toBe('You can only delete files you have access to');
       expect(response.body.unauthorizedFiles).toContain(fileId);
       expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /files', () => {
+    it('should prevent non-admin users from uploading assistant builder files', async () => {
+      const response = await request(app).post('/files').send({
+        endpoint: EModelEndpoint.azureAssistants,
+        assistant_id: 'asst_test123',
+        tool_resource: 'code_interpreter',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Forbidden');
+      expect(processFileUpload).not.toHaveBeenCalled();
+      expect(fs.promises.unlink).toHaveBeenCalledWith('/tmp/test.txt');
+    });
+
+    it('should allow non-admin chat attachments for assistants', async () => {
+      const response = await request(app).post('/files').send({
+        endpoint: EModelEndpoint.azureAssistants,
+        assistant_id: 'asst_test123',
+        tool_resource: 'code_interpreter',
+        message_file: true,
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(processFileUpload).toHaveBeenCalled();
+    });
+
+    it('should allow admins to upload assistant builder files', async () => {
+      currentUserRole = SystemRoles.ADMIN;
+
+      const response = await request(app).post('/files').send({
+        endpoint: EModelEndpoint.azureAssistants,
+        assistant_id: 'asst_test123',
+        tool_resource: 'code_interpreter',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(processFileUpload).toHaveBeenCalled();
     });
   });
 
