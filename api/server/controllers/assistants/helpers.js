@@ -5,6 +5,7 @@ const {
   defaultAssistantsVersion,
   AzureAssistantsNewEndpoint,
   AzureAssistantsOldEndpoint,
+  isAzureAssistantsVariantEnabled,
   resolveAssistantsConfigEndpoint,
 } = require('librechat-data-provider');
 const { logger } = require('@librechat/data-schemas');
@@ -17,6 +18,84 @@ const { getEndpointsConfig } = require('~/server/services/Config');
 
 const isLegacyAzureAssistantsEndpoint = (endpoint) =>
   endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
+
+const createEmptyAssistantListResponse = () => ({
+  first_id: undefined,
+  last_id: undefined,
+  object: 'list',
+  has_more: false,
+  data: [],
+});
+
+const createAzureAssistantsDisabledError = (endpoint) => {
+  let label = 'Azure Assistants';
+
+  if (endpoint === AzureAssistantsNewEndpoint) {
+    label = 'Azure Assistants New';
+  } else if (endpoint === AzureAssistantsOldEndpoint) {
+    label = 'Azure Assistants Old';
+  }
+
+  const error = new Error(`${label} is disabled.`);
+  error.statusCode = 404;
+  return error;
+};
+
+const resolveAzureAssistantsEndpoint = async ({ req, endpoint }) => {
+  if (endpoint == null || endpoint === '') {
+    return endpoint;
+  }
+
+  if (
+    endpoint !== EModelEndpoint.azureAssistants &&
+    endpoint !== AzureAssistantsNewEndpoint &&
+    endpoint !== AzureAssistantsOldEndpoint
+  ) {
+    return endpoint;
+  }
+
+  const endpointsConfig = await getEndpointsConfig(req);
+  const enableNewAssistants = isAzureAssistantsVariantEnabled(
+    endpointsConfig,
+    AzureAssistantsNewEndpoint,
+  );
+  const enableOldAssistants = isAzureAssistantsVariantEnabled(
+    endpointsConfig,
+    AzureAssistantsOldEndpoint,
+  );
+
+  if (endpoint === AzureAssistantsNewEndpoint) {
+    return enableNewAssistants ? AzureAssistantsNewEndpoint : null;
+  }
+
+  if (endpoint === AzureAssistantsOldEndpoint) {
+    return enableOldAssistants ? AzureAssistantsOldEndpoint : null;
+  }
+
+  if (enableNewAssistants && isFoundryAgentsConfigured()) {
+    return AzureAssistantsNewEndpoint;
+  }
+
+  if (enableOldAssistants) {
+    return AzureAssistantsOldEndpoint;
+  }
+
+  return null;
+};
+
+const assertAzureAssistantsEndpointEnabled = async ({ req, endpoint }) => {
+  if (endpoint == null || endpoint === '') {
+    return endpoint;
+  }
+
+  const resolvedEndpoint = await resolveAzureAssistantsEndpoint({ req, endpoint });
+
+  if (resolvedEndpoint == null) {
+    throw createAzureAssistantsDisabledError(endpoint);
+  }
+
+  return resolvedEndpoint;
+};
 
 /**
  * @param {ServerRequest} req
@@ -369,6 +448,7 @@ const listAssistantsForAzure = async ({ req, res, version, azureConfig = {}, que
  */
 async function getOpenAIClient({ req, res, endpointOption, initAppClient, overrideEndpoint }) {
   let endpoint = overrideEndpoint ?? req.body?.endpoint ?? req.query?.endpoint;
+  const resolvedEndpoint = await assertAzureAssistantsEndpointEnabled({ req, endpoint });
   const version = await getCurrentVersion(req, endpoint);
   if (!endpoint) {
     throw new Error(`[${req.baseUrl}] Endpoint is required`);
@@ -377,7 +457,11 @@ async function getOpenAIClient({ req, res, endpointOption, initAppClient, overri
   let result;
   if (endpoint === EModelEndpoint.assistants) {
     result = await initializeClient({ req, res, version, endpointOption, initAppClient });
-  } else if (isLegacyAzureAssistantsEndpoint(endpoint)) {
+  } else if (resolvedEndpoint === AzureAssistantsNewEndpoint) {
+    const error = new Error('Azure Assistants New does not use the legacy Azure OpenAI client.');
+    error.statusCode = 400;
+    throw error;
+  } else if (isLegacyAzureAssistantsEndpoint(resolvedEndpoint)) {
     result = await initAzureClient({ req, res, version, endpointOption, initAppClient });
   }
 
@@ -405,6 +489,7 @@ const fetchAssistants = async ({ req, res, overrideEndpoint }) => {
     endpoint: overrideEndpoint,
     ...defaultOrderQuery,
   };
+  const resolvedEndpoint = await resolveAzureAssistantsEndpoint({ req, endpoint });
 
   const version = await getCurrentVersion(req, endpoint);
   const query = { limit, order, after, before };
@@ -412,13 +497,13 @@ const fetchAssistants = async ({ req, res, overrideEndpoint }) => {
   /** @type {AssistantListResponse} */
   let body;
 
-  if (endpoint === EModelEndpoint.assistants) {
+  if (resolvedEndpoint == null) {
+    body = createEmptyAssistantListResponse();
+  } else if (resolvedEndpoint === EModelEndpoint.assistants) {
     ({ body } = await listAllAssistants({ req, res, version, query }));
-  } else if (endpoint === AzureAssistantsNewEndpoint) {
+  } else if (resolvedEndpoint === AzureAssistantsNewEndpoint) {
     body = await listFoundryAgents(query);
-  } else if (endpoint === EModelEndpoint.azureAssistants && isFoundryAgentsConfigured()) {
-    body = await listFoundryAgents(query);
-  } else if (isLegacyAzureAssistantsEndpoint(endpoint)) {
+  } else if (isLegacyAzureAssistantsEndpoint(resolvedEndpoint)) {
     const azureConfig = appConfig.endpoints?.[EModelEndpoint.azureOpenAI];
     body = await listAssistantsForAzure({ req, res, version, azureConfig, query });
   }
@@ -463,6 +548,8 @@ function filterAssistants({ assistants, userId, assistantsConfig }) {
 }
 
 module.exports = {
+  assertAzureAssistantsEndpointEnabled,
+  resolveAzureAssistantsEndpoint,
   getOpenAIClient,
   fetchAssistants,
   getCurrentVersion,

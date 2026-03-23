@@ -1,7 +1,12 @@
 import type { TEndpointsConfig } from './types';
-import { EModelEndpoint, isDocumentSupportedProvider } from './schemas';
+import {
+  EModelEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+  isDocumentSupportedProvider,
+} from './schemas';
 import { getEndpointFileConfig, mergeFileConfig } from './file-config';
-import { resolveEndpointType } from './config';
+import { isAzureAssistantsVariantEnabled, resolveEndpointType } from './config';
 
 const endpointsConfig: TEndpointsConfig = {
   [EModelEndpoint.openAI]: { userProvide: false, order: 0 },
@@ -110,6 +115,55 @@ describe('resolveEndpointType', () => {
     it('handles undefined endpointsConfig', () => {
       expect(resolveEndpointType(undefined, 'Moonshot')).toBe('Moonshot');
     });
+  });
+});
+
+describe('isAzureAssistantsVariantEnabled', () => {
+  const azureAssistantsConfig: TEndpointsConfig = {
+    [EModelEndpoint.azureAssistants]: {
+      order: 0,
+      enableNewAssistants: false,
+      enableOldAssistants: true,
+    },
+  };
+
+  it('returns true for non-Azure endpoints', () => {
+    expect(isAzureAssistantsVariantEnabled(azureAssistantsConfig, EModelEndpoint.openAI)).toBe(
+      true,
+    );
+  });
+
+  it('returns false for Azure Assistants New when disabled', () => {
+    expect(isAzureAssistantsVariantEnabled(azureAssistantsConfig, AzureAssistantsNewEndpoint)).toBe(
+      false,
+    );
+  });
+
+  it('returns true for Azure Assistants Old when enabled', () => {
+    expect(isAzureAssistantsVariantEnabled(azureAssistantsConfig, AzureAssistantsOldEndpoint)).toBe(
+      true,
+    );
+  });
+
+  it('returns true for the shared Azure Assistants endpoint when at least one variant is enabled', () => {
+    expect(
+      isAzureAssistantsVariantEnabled(azureAssistantsConfig, EModelEndpoint.azureAssistants),
+    ).toBe(true);
+  });
+
+  it('returns false for Azure Assistants when both variants are disabled', () => {
+    expect(
+      isAzureAssistantsVariantEnabled(
+        {
+          [EModelEndpoint.azureAssistants]: {
+            order: 0,
+            enableNewAssistants: false,
+            enableOldAssistants: false,
+          },
+        },
+        EModelEndpoint.azureAssistants,
+      ),
+    ).toBe(false);
   });
 });
 

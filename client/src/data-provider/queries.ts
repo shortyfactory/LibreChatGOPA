@@ -3,6 +3,7 @@ import {
   dataService,
   EModelEndpoint,
   isAgentsEndpoint,
+  isAzureAssistantsVariantEnabled,
   defaultOrderQuery,
   defaultAssistantsVersion,
   resolveAssistantsConfigEndpoint,
@@ -33,6 +34,22 @@ import type {
 } from 'librechat-data-provider';
 import type { ConversationCursorData } from '~/utils/convos';
 import { findConversationInInfinite, isNotFoundError } from '~/utils';
+
+function isAssistantEndpointEnabled(
+  endpointsConfig: TEndpointsConfig | undefined,
+  endpoint: t.AssistantsEndpoint | EModelEndpoint.agents,
+): boolean {
+  if (isAgentsEndpoint(endpoint)) {
+    return true;
+  }
+
+  const configEndpoint = resolveAssistantsConfigEndpoint(endpoint);
+  if (!endpointsConfig?.[configEndpoint]) {
+    return false;
+  }
+
+  return isAzureAssistantsVariantEnabled(endpointsConfig, endpoint);
+}
 
 export const useGetPresetsQuery = (
   config?: UseQueryOptions<TPreset[]>,
@@ -203,7 +220,7 @@ export const useAvailableToolsQuery = <TData = t.TPlugin[]>(
   const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
   const enabled = isAgentsEndpoint(endpoint)
     ? true
-    : !!endpointsConfig?.[configEndpoint] && keyProvided;
+    : isAssistantEndpointEnabled(endpointsConfig, endpoint) && keyProvided;
   const version: string | number | undefined =
     endpointsConfig?.[configEndpoint]?.version ??
     defaultAssistantsVersion[endpoint] ??
@@ -238,7 +255,7 @@ export const useListAssistantsQuery = <TData = AssistantListResponse>(
   ]);
   const userProvidesKey = !!(endpointsConfig?.[configEndpoint]?.userProvide ?? false);
   const keyProvided = userProvidesKey ? !!(keyExpiry?.expiresAt ?? '') : true;
-  const enabled = !!endpointsConfig?.[configEndpoint] && keyProvided;
+  const enabled = isAssistantEndpointEnabled(endpointsConfig, endpoint) && keyProvided;
   const version =
     endpointsConfig?.[configEndpoint]?.version ??
     defaultAssistantsVersion[endpoint] ??
@@ -311,7 +328,7 @@ export const useGetAssistantByIdQuery = (
   ]);
   const userProvidesKey = endpointsConfig?.[configEndpoint]?.userProvide ?? false;
   const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
-  const enabled = !!endpointsConfig?.[configEndpoint] && keyProvided;
+  const enabled = isAssistantEndpointEnabled(endpointsConfig, endpoint) && keyProvided;
   const version =
     endpointsConfig?.[configEndpoint]?.version ??
     defaultAssistantsVersion[endpoint] ??
@@ -353,7 +370,8 @@ export const useGetActionsQuery = <TData = Action[]>(
   const userProvidesKey = !!endpointsConfig?.[configEndpoint]?.userProvide;
   const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
   const enabled =
-    (!!endpointsConfig?.[configEndpoint] && keyProvided) || endpoint === EModelEndpoint.agents;
+    (isAssistantEndpointEnabled(endpointsConfig, endpoint) && keyProvided) ||
+    endpoint === EModelEndpoint.agents;
 
   return useQuery<Action[], unknown, TData>([QueryKeys.actions], () => dataService.getActions(), {
     refetchOnWindowFocus: false,
@@ -380,7 +398,7 @@ export const useGetAssistantDocsQuery = <TData = AssistantDocument[]>(
   ]);
   const userProvidesKey = !!(endpointsConfig?.[configEndpoint]?.userProvide ?? false);
   const keyProvided = userProvidesKey ? !!(keyExpiry?.expiresAt ?? '') : true;
-  const enabled = !!endpointsConfig?.[configEndpoint] && keyProvided;
+  const enabled = isAssistantEndpointEnabled(endpointsConfig, endpoint) && keyProvided;
   const version =
     endpointsConfig?.[configEndpoint]?.version ??
     defaultAssistantsVersion[endpoint] ??

@@ -110,7 +110,7 @@ const retrieveAssistant = async (req, res) => {
     res.json(assistant);
   } catch (error) {
     logger.error('[/assistants/:id] Error retrieving assistant', error);
-    res.status(500).json({ error: error.message });
+    res.status(error?.statusCode ?? 500).json({ error: error.message });
   }
 };
 
@@ -221,7 +221,9 @@ const listAssistants = async (req, res) => {
     res.json(body);
   } catch (error) {
     logger.error('[/assistants] Error listing assistants', error);
-    res.status(500).json({ message: 'Error listing assistants' });
+    res
+      .status(error?.statusCode ?? 500)
+      .json({ message: error.message ?? 'Error listing assistants' });
   }
 };
 

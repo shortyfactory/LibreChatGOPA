@@ -91,6 +91,8 @@ const createErrorHandler = ({ req, res, getContext, originPath = '/assistants/ch
       );
     } else if (error?.message?.includes(ViolationTypes.TOKEN_BALANCE)) {
       return sendResponse(req, res, messageData, error.message);
+    } else if (error?.statusCode && !openai && !thread_id && !run_id) {
+      return sendResponse(req, res, messageData, error.message ?? defaultErrorMessage);
     } else {
       logger.error(`[${originPath}]`, error);
     }

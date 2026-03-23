@@ -1,4 +1,5 @@
 export * from './anthropic';
+export * from './azureAssistants';
 export * from './bedrock';
 export * from './config';
 export * from './custom';

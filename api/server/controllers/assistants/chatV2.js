@@ -10,6 +10,7 @@ const {
   ContentTypes,
   ToolCallTypes,
   EModelEndpoint,
+  AzureAssistantsNewEndpoint,
   AzureAssistantsOldEndpoint,
   retrievalMimeTypes,
   AssistantStreamEvents,
@@ -39,7 +40,7 @@ const {
   hydrateAssistantLegacyFileIds,
   requiresTemporaryAssistant,
 } = require('~/server/controllers/assistants/toolAccess');
-const { getOpenAIClient } = require('./helpers');
+const { assertAzureAssistantsEndpointEnabled, getOpenAIClient } = require('./helpers');
 
 const isLegacyAzureAssistantsEndpoint = (endpoint) =>
   endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
@@ -72,6 +73,7 @@ const chatV2 = async (req, res) => {
     parentMessageId: _parentId = Constants.NO_PARENT,
     clientTimestamp,
   } = req.body;
+  let resolvedEndpoint;
 
   /** @type {OpenAI} */
   let openai;
@@ -149,6 +151,13 @@ const chatV2 = async (req, res) => {
   const handleError = createErrorHandler({ req, res, getContext });
 
   try {
+    resolvedEndpoint = await assertAzureAssistantsEndpointEnabled({ req, endpoint });
+    if (resolvedEndpoint === AzureAssistantsNewEndpoint) {
+      const error = new Error('Azure Assistants New is only supported on the v1 chat route.');
+      error.statusCode = 400;
+      throw error;
+    }
+
     res.on('close', async () => {
       if (!completedRun) {
         await handleError(new Error('Request closed'));

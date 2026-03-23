@@ -1,4 +1,7 @@
-const { loadCustomEndpointsConfig } = require('@librechat/api');
+const {
+  getAzureAssistantsVariantAvailability,
+  loadCustomEndpointsConfig,
+} = require('@librechat/api');
 const {
   CacheKeys,
   EModelEndpoint,
@@ -29,6 +32,7 @@ async function getEndpointsConfig(req) {
   const appConfig = req.config ?? (await getAppConfig({ role: req.user?.role }));
   const defaultEndpointsConfig = await loadDefaultEndpointsConfig(appConfig);
   const customEndpointsConfig = loadCustomEndpointsConfig(appConfig?.endpoints?.custom);
+  const { enableNewAssistants, enableOldAssistants } = getAzureAssistantsVariantAvailability();
 
   /** @type {TEndpointsConfig} */
   const mergedConfig = {
@@ -99,6 +103,18 @@ async function getEndpointsConfig(req) {
       disableBuilder,
       capabilities,
     };
+  }
+
+  if (mergedConfig[EModelEndpoint.azureAssistants]) {
+    mergedConfig[EModelEndpoint.azureAssistants] = {
+      ...mergedConfig[EModelEndpoint.azureAssistants],
+      enableNewAssistants,
+      enableOldAssistants,
+    };
+
+    if (enableNewAssistants === false && enableOldAssistants === false) {
+      delete mergedConfig[EModelEndpoint.azureAssistants];
+    }
   }
 
   if (mergedConfig[EModelEndpoint.bedrock] && appConfig?.endpoints?.[EModelEndpoint.bedrock]) {

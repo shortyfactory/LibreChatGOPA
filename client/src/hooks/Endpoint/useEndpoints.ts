@@ -8,6 +8,7 @@ import {
   getEndpointField,
   AzureAssistantsNewEndpoint,
   AzureAssistantsOldEndpoint,
+  isAzureAssistantsVariantEnabled,
   resolveAssistantsConfigEndpoint,
 } from 'librechat-data-provider';
 import type {
@@ -146,18 +147,29 @@ export const useEndpoints = ({
 
     return filteredEndpoints.flatMap((ep) => {
       if (ep === EModelEndpoint.azureAssistants) {
-        return [
-          buildAssistantEndpoint(
-            AzureAssistantsNewEndpoint,
-            alternateName[AzureAssistantsNewEndpoint] || AzureAssistantsNewEndpoint,
-            azureAssistantsNew,
-          ),
-          buildAssistantEndpoint(
-            AzureAssistantsOldEndpoint,
-            alternateName[AzureAssistantsOldEndpoint] || AzureAssistantsOldEndpoint,
-            azureAssistantsOld,
-          ),
-        ];
+        const azureAssistantVariants: Endpoint[] = [];
+
+        if (isAzureAssistantsVariantEnabled(endpointsConfig, AzureAssistantsNewEndpoint)) {
+          azureAssistantVariants.push(
+            buildAssistantEndpoint(
+              AzureAssistantsNewEndpoint,
+              alternateName[AzureAssistantsNewEndpoint] || AzureAssistantsNewEndpoint,
+              azureAssistantsNew,
+            ),
+          );
+        }
+
+        if (isAzureAssistantsVariantEnabled(endpointsConfig, AzureAssistantsOldEndpoint)) {
+          azureAssistantVariants.push(
+            buildAssistantEndpoint(
+              AzureAssistantsOldEndpoint,
+              alternateName[AzureAssistantsOldEndpoint] || AzureAssistantsOldEndpoint,
+              azureAssistantsOld,
+            ),
+          );
+        }
+
+        return azureAssistantVariants;
       }
 
       const endpointType = getEndpointField(endpointsConfig, ep, 'type');

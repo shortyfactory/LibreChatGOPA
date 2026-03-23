@@ -9,7 +9,6 @@ const {
   getFoundryFileArrayBuffer,
   getBalanceConfig,
   getModelMaxTokens,
-  isFoundryAgentsConfigured,
 } = require('@librechat/api');
 const {
   Time,
@@ -56,7 +55,7 @@ const {
   hydrateAssistantLegacyFileIds,
   requiresTemporaryAssistant,
 } = require('~/server/controllers/assistants/toolAccess');
-const { getOpenAIClient } = require('./helpers');
+const { assertAzureAssistantsEndpointEnabled, getOpenAIClient } = require('./helpers');
 
 const isLegacyAzureAssistantsEndpoint = (endpoint) =>
   endpoint === EModelEndpoint.azureAssistants || endpoint === AzureAssistantsOldEndpoint;
@@ -388,29 +387,7 @@ const chatV1 = async (req, res) => {
     parentMessageId: _parentId = Constants.NO_PARENT,
     clientTimestamp,
   } = req.body;
-
-  if (
-    endpoint === AzureAssistantsNewEndpoint ||
-    (endpoint === EModelEndpoint.azureAssistants && isFoundryAgentsConfigured())
-  ) {
-    await chatWithFoundryAssistantV1({
-      req,
-      res,
-      text,
-      model,
-      files,
-      endpoint,
-      promptPrefix,
-      assistant_id,
-      instructions,
-      endpointOption,
-      clientTimestamp,
-      thread_id: _thread_id,
-      conversationId: convoId,
-      parentMessageId: _parentId,
-    });
-    return;
-  }
+  let resolvedEndpoint;
 
   /** @type {OpenAI} */
   let openai;
@@ -511,6 +488,8 @@ const chatV1 = async (req, res) => {
       );
     } else if (error?.message?.includes(ViolationTypes.TOKEN_BALANCE)) {
       return sendResponse(req, res, messageData, error.message);
+    } else if (error?.statusCode && !openai && !thread_id && !run_id) {
+      return sendResponse(req, res, messageData, error.message ?? defaultErrorMessage);
     } else {
       logger.error('[/assistants/chat/]', error);
     }
@@ -610,6 +589,29 @@ const chatV1 = async (req, res) => {
   };
 
   try {
+    resolvedEndpoint = await assertAzureAssistantsEndpointEnabled({ req, endpoint });
+
+    if (resolvedEndpoint === AzureAssistantsNewEndpoint) {
+      completedRun = true;
+      await chatWithFoundryAssistantV1({
+        req,
+        res,
+        text,
+        model,
+        files,
+        endpoint,
+        promptPrefix,
+        assistant_id,
+        instructions,
+        endpointOption,
+        clientTimestamp,
+        thread_id: _thread_id,
+        conversationId: convoId,
+        parentMessageId: _parentId,
+      });
+      return;
+    }
+
     res.on('close', async () => {
       if (!completedRun) {
         await handleError(new Error('Request closed'));

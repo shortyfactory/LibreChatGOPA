@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ZodError } from 'zod';
 import type { TEndpointsConfig, TModelsConfig, TConfig } from './types';
+import type { AssistantsEndpoint } from './schemas';
 import {
   EModelEndpoint,
   eModelEndpointSchema,
@@ -238,6 +239,8 @@ export const assistantEndpointSchema = baseEndpointSchema.merge(
   z.object({
     /* assistants specific */
     disableBuilder: z.boolean().optional(),
+    enableNewAssistants: z.boolean().optional(),
+    enableOldAssistants: z.boolean().optional(),
     pollIntervalMs: z.number().optional(),
     timeoutMs: z.number().optional(),
     version: z.union([z.string(), z.number()]).default(2),
@@ -1973,6 +1976,34 @@ export function getEndpointField<
     return undefined;
   }
   return config[property];
+}
+
+export function isAzureAssistantsVariantEnabled(
+  endpointsConfig: TEndpointsConfig | undefined | null,
+  endpoint: AssistantsEndpoint | string | null | undefined,
+): boolean {
+  if (
+    endpoint !== EModelEndpoint.azureAssistants &&
+    endpoint !== AzureAssistantsNewEndpoint &&
+    endpoint !== AzureAssistantsOldEndpoint
+  ) {
+    return true;
+  }
+
+  const config = endpointsConfig?.[EModelEndpoint.azureAssistants];
+  if (!config) {
+    return false;
+  }
+
+  if (endpoint === AzureAssistantsNewEndpoint) {
+    return config.enableNewAssistants !== false;
+  }
+
+  if (endpoint === AzureAssistantsOldEndpoint) {
+    return config.enableOldAssistants !== false;
+  }
+
+  return config.enableNewAssistants !== false || config.enableOldAssistants !== false;
 }
 
 /**
