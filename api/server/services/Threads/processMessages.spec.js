@@ -980,4 +980,38 @@ These points highlight Harry's initial experiences in the magical world and set 
     expect(result.text).toBe(expectedText);
     expect(result.edited).toBe(true);
   });
+
+  test('replaces plain file reference ids with known filenames', async () => {
+    const messages = [
+      {
+        content: [
+          {
+            type: 'text',
+            text: {
+              value: 'Voici les fichiers joints :\n1. assistant-ABC123\n2. file-XYZ789',
+              annotations: [],
+            },
+          },
+        ],
+        created_at: 1,
+        files: [
+          {
+            id: 'assistant-ABC123',
+            file_id: 'file-XYZ789',
+            filename: 'resume.pdf',
+          },
+        ],
+      },
+    ];
+
+    const result = await processMessages({
+      openai: {},
+      client: { processedFileIds: new Set() },
+      messages,
+    });
+
+    expect(result.text).toBe('Voici les fichiers joints :\n1. resume.pdf\n2. resume.pdf');
+    expect(result.edited).toBe(true);
+    expect(retrieveAndProcessFile).not.toHaveBeenCalled();
+  });
 });

@@ -25,6 +25,7 @@ type ControlComboboxProps = {
 };
 
 const mockUseListAgentsQuery = jest.fn();
+const mockUseAgentDefaultPermissionLevel = jest.fn();
 
 jest.mock('~/data-provider', () => ({
   useListAgentsQuery: (...args: unknown[]) => mockUseListAgentsQuery(...args),
@@ -32,6 +33,7 @@ jest.mock('~/data-provider', () => ({
 
 jest.mock('~/hooks', () => ({
   useLocalize: () => (key: string) => key,
+  useAgentDefaultPermissionLevel: () => mockUseAgentDefaultPermissionLevel(),
 }));
 
 jest.mock('@librechat/client', () => ({
@@ -77,16 +79,18 @@ function TestHarness() {
 describe('AgentSelect', () => {
   beforeEach(() => {
     mockUseListAgentsQuery.mockReset();
+    mockUseAgentDefaultPermissionLevel.mockReset();
+    mockUseAgentDefaultPermissionLevel.mockReturnValue(PermissionBits.VIEW);
     mockUseListAgentsQuery.mockReturnValue({
       data: [],
     });
   });
 
-  it('requests only editable agents for the builder list', () => {
+  it('requests agents using the default permission level for the current user', () => {
     render(<TestHarness />);
 
     expect(mockUseListAgentsQuery).toHaveBeenCalledWith(
-      { requiredPermission: PermissionBits.EDIT },
+      { requiredPermission: PermissionBits.VIEW },
       expect.objectContaining({
         select: expect.any(Function),
       }),

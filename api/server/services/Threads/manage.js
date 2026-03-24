@@ -206,6 +206,60 @@ async function addThreadMetadata({ openai, thread_id, messageId, messages }) {
   return await Promise.all(promises);
 }
 
+function getFileReferenceKeys(file, fallbackFileId) {
+  return Array.from(new Set([fallbackFileId, file?.file_id, file?.id].filter(Boolean)));
+}
+
+function isFileReferenceId(reference) {
+  return typeof reference === 'string' && /^(assistant|file)-/i.test(reference);
+}
+
+function rememberFileReference(fileNamesById, file, fallbackFileId) {
+  if (!file?.filename) {
+    return;
+  }
+
+  for (const id of getFileReferenceKeys(file, fallbackFileId)) {
+    fileNamesById.set(id, file.filename);
+  }
+}
+
+function addMessageFile(message, file, fallbackFileId) {
+  if (!file) {
+    return;
+  }
+
+  const nextKeys = getFileReferenceKeys(file, fallbackFileId);
+  const exists = (message.files ?? []).some((currentFile) =>
+    getFileReferenceKeys(currentFile).some((key) => nextKeys.includes(key)),
+  );
+
+  if (!exists) {
+    message.files.push(file);
+  }
+}
+
+function replaceFileReferenceIds(currentText, fileNamesById) {
+  if (!currentText || fileNamesById.size === 0) {
+    return currentText;
+  }
+
+  let nextText = currentText;
+  const references = Array.from(fileNamesById.entries()).sort((a, b) => b[0].length - a[0].length);
+
+  for (const [id, filename] of references) {
+    if (!id || !filename || id === filename || !isFileReferenceId(id)) {
+      continue;
+    }
+
+    const pattern = new RegExp(`(^|[\\s([{"'])${escapeRegExp(id)}(?=$|[\\s)\\]}.,;:!?"'])`, 'gm');
+
+    nextText = nextText.replace(pattern, `$1${filename}`);
+  }
+
+  return nextText;
+}
+
 /**
  * Synchronizes LibreChat messages to Thread Messages.
  * Updates the LibreChat DB with any missing Thread Messages and
@@ -533,10 +587,13 @@ async function processMessages({ openai, client, messages = [] }) {
   let text = '';
   let edited = false;
   const sources = new Map();
+  const fileNamesById = new Map();
   const fileRetrievalPromises = [];
 
   for (const message of sorted) {
-    message.files = [];
+    const existingFiles = Array.isArray(message.files) ? [...message.files] : [];
+    existingFiles.forEach((file) => rememberFileReference(fileNamesById, file));
+    message.files = existingFiles;
     for (const content of message.content) {
       const type = content.type;
       const contentType = content[type];
@@ -552,7 +609,8 @@ async function processMessages({ openai, client, messages = [] }) {
           })
             .then((file) => {
               client.processedFileIds.add(currentFileId);
-              message.files.push(file);
+              rememberFileReference(fileNamesById, file, currentFileId);
+              addMessageFile(message, file, currentFileId);
             })
             .catch((error) => {
               console.error(`Failed to retrieve file: ${error.message}`);
@@ -567,7 +625,11 @@ async function processMessages({ openai, client, messages = [] }) {
       const { annotations } = contentType ?? {};
 
       if (!annotations?.length) {
-        text += currentText;
+        const nextText = replaceFileReferenceIds(currentText, fileNamesById);
+        if (nextText !== currentText) {
+          edited = true;
+        }
+        text += nextText;
         continue;
       }
 
@@ -617,9 +679,10 @@ async function processMessages({ openai, client, messages = [] }) {
               text: replacementText,
             });
             edited = true;
+            rememberFileReference(fileNamesById, file, file_id);
             if (!alreadyProcessed) {
               client.processedFileIds.add(file_id);
-              message.files.push(file);
+              addMessageFile(message, file, file_id);
             }
           }
         } catch (error) {
@@ -635,7 +698,11 @@ async function processMessages({ openai, client, messages = [] }) {
         currentText = currentText.slice(0, start) + replacementText + currentText.slice(end);
       }
 
-      text += currentText;
+      const nextText = replaceFileReferenceIds(currentText, fileNamesById);
+      if (nextText !== currentText) {
+        edited = true;
+      }
+      text += nextText;
     }
   }
 
