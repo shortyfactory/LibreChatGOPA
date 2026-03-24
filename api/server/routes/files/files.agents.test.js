@@ -118,7 +118,7 @@ describe('File Routes - Agent Files Endpoint', () => {
 
     // Mock authentication middleware
     app.use((req, res, next) => {
-      req.user = { id: otherUserId || 'default-user' };
+      req.user = { id: otherUserId || 'default-user', role: SystemRoles.USER };
       req.app = { locals: {} };
       next();
     });
@@ -203,7 +203,7 @@ describe('File Routes - Agent Files Endpoint', () => {
   });
 
   describe('GET /files/agent/:agent_id', () => {
-    it('should deny non-admin users even when they have EDIT permission on the agent', async () => {
+    it('should allow non-admin users with EDIT permission on the agent', async () => {
       // Create an agent with files attached
       const agent = await createAgent({
         id: agentId,
@@ -231,11 +231,11 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       const response = await request(app).get(`/files/agent/${agentId}`);
 
-      expect(response.status).toBe(403);
-      expect(response.body).toEqual({
-        error: 'Access denied: Admin privileges required',
-        error_code: 'ADMIN_REQUIRED',
-      });
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body).toHaveLength(2);
+      expect(response.body.map((f) => f.file_id)).toContain(fileId1);
+      expect(response.body.map((f) => f.file_id)).toContain(fileId2);
     });
 
     it('should return 400 when agent_id is not provided', async () => {
@@ -244,17 +244,14 @@ describe('File Routes - Agent Files Endpoint', () => {
       expect(response.status).toBe(404); // Express returns 404 for missing route parameter
     });
 
-    it('should reject non-admin users before resolving a non-existent agent', async () => {
+    it('should return an empty list for a non-existent agent', async () => {
       const response = await request(app).get('/files/agent/non-existent-agent');
 
-      expect(response.status).toBe(403);
-      expect(response.body).toEqual({
-        error: 'Access denied: Admin privileges required',
-        error_code: 'ADMIN_REQUIRED',
-      });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
     });
 
-    it('should deny non-admin users with only VIEW permission', async () => {
+    it('should allow non-admin users with VIEW permission', async () => {
       // Create an agent with files attached
       const agent = await createAgent({
         id: agentId,
@@ -282,10 +279,31 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       const response = await request(app).get(`/files/agent/${agentId}`);
 
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body).toHaveLength(2);
+    });
+
+    it('should deny non-admin users without access to the agent', async () => {
+      await createAgent({
+        id: agentId,
+        name: 'Test Agent',
+        provider: 'openai',
+        model: 'gpt-4',
+        author: authorId,
+        tool_resources: {
+          file_search: {
+            file_ids: [fileId1, fileId2],
+          },
+        },
+      });
+
+      const response = await request(app).get(`/files/agent/${agentId}`);
+
       expect(response.status).toBe(403);
       expect(response.body).toEqual({
-        error: 'Access denied: Admin privileges required',
-        error_code: 'ADMIN_REQUIRED',
+        error: 'Forbidden',
+        message: 'You do not have permission to view files for this agent',
       });
     });
 
@@ -498,7 +516,7 @@ describe('File Routes - Agent Files Endpoint', () => {
       expect(processAgentFileUpload).not.toHaveBeenCalled();
     });
 
-    it('should deny file upload to agent for user with only VIEW permission', async () => {
+    it('should deny file_search upload to agent for user with only VIEW permission', async () => {
       // Create an agent owned by authorId
       const agent = await createAgent({
         id: agentCustomId,
@@ -530,8 +548,120 @@ describe('File Routes - Agent Files Endpoint', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('Forbidden');
-      expect(response.body.message).toBe('Only admins can manage agent builder files');
+      expect(response.body.message).toBe(
+        'You do not have permission to manage files for this agent',
+      );
       expect(processAgentFileUpload).not.toHaveBeenCalled();
+    });
+
+    it('should allow file_search upload to agent for the non-admin author', async () => {
+      await createAgent({
+        id: agentCustomId,
+        name: 'Test Agent',
+        provider: 'openai',
+        model: 'gpt-4',
+        author: authorId,
+      });
+
+      const testApp = createAppWithUser(authorId);
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'agents',
+        agent_id: agentCustomId,
+        tool_resource: 'file_search',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(processAgentFileUpload).toHaveBeenCalled();
+    });
+
+    it('should allow file_search upload to agent for non-admin users with EDIT permission', async () => {
+      const agent = await createAgent({
+        id: agentCustomId,
+        name: 'Test Agent',
+        provider: 'openai',
+        model: 'gpt-4',
+        author: authorId,
+      });
+
+      const { grantPermission } = require('~/server/services/PermissionService');
+      await grantPermission({
+        principalType: PrincipalType.USER,
+        principalId: otherUserId,
+        resourceType: ResourceType.AGENT,
+        resourceId: agent._id,
+        accessRoleId: AccessRoleIds.AGENT_EDITOR,
+        grantedBy: authorId,
+      });
+
+      const testApp = createAppWithUser(otherUserId);
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'agents',
+        agent_id: agentCustomId,
+        tool_resource: 'file_search',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(processAgentFileUpload).toHaveBeenCalled();
+    });
+
+    it('should surface file_search embedding provider errors from agent uploads', async () => {
+      await createAgent({
+        id: agentCustomId,
+        name: 'Test Agent',
+        provider: 'openai',
+        model: 'gpt-4',
+        author: authorId,
+      });
+
+      processAgentFileUpload.mockImplementationOnce(async () => {
+        throw new Error(
+          'File embedding failed. Error code: 401 - Incorrect API key provided: user_provided.',
+        );
+      });
+
+      const testApp = createAppWithUser(authorId);
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'agents',
+        agent_id: agentCustomId,
+        tool_resource: 'file_search',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(500);
+      expect(response.body.message).toBe(
+        'File embedding failed. Error code: 401 - Incorrect API key provided: user_provided.',
+      );
+    });
+
+    it('should surface missing RAG API configuration for agent file_search uploads', async () => {
+      await createAgent({
+        id: agentCustomId,
+        name: 'Test Agent',
+        provider: 'openai',
+        model: 'gpt-4',
+        author: authorId,
+      });
+
+      processAgentFileUpload.mockImplementationOnce(async () => {
+        throw new Error('RAG_API_URL not defined');
+      });
+
+      const testApp = createAppWithUser(authorId);
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'agents',
+        agent_id: agentCustomId,
+        tool_resource: 'file_search',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(500);
+      expect(response.body.message).toBe('RAG_API_URL not defined');
     });
 
     it('should allow file upload for admin user regardless of agent ownership', async () => {

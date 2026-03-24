@@ -6,6 +6,7 @@ const {
   agentCreateSchema,
   agentUpdateSchema,
   refreshListAvatars,
+  mergeAgentBuilderTools,
   sanitizeAgentCreatePayload,
   sanitizeAgentUpdatePayload,
   collectEdgeAgentIds,
@@ -187,7 +188,7 @@ const createAgentHandler = async (req, res) => {
       agentCreateSchema.parse(req.body),
       req.user?.role,
     );
-    const { tools = [], ...agentData } = removeNullishValues(validatedData);
+    const { tools, ...agentData } = removeNullishValues(validatedData);
 
     if (agentData.model_parameters && typeof agentData.model_parameters === 'object') {
       agentData.model_parameters = removeNullishValues(agentData.model_parameters, true);
@@ -207,10 +208,19 @@ const createAgentHandler = async (req, res) => {
 
     agentData.id = `agent_${nanoid()}`;
     agentData.author = userId;
-    agentData.tools = [];
+    agentData.tools =
+      mergeAgentBuilderTools({
+        requestedTools: tools,
+        existingTools: [],
+        role: userRole,
+      }) ?? [];
 
     const availableTools = (await getCachedTools()) ?? {};
-    agentData.tools = await filterAuthorizedTools({ tools, userId, availableTools });
+    agentData.tools = await filterAuthorizedTools({
+      tools: agentData.tools,
+      userId,
+      availableTools,
+    });
 
     const agent = await createAgent(agentData);
 
@@ -321,6 +331,14 @@ const getAgentHandler = async (req, res, expandProperties = false) => {
         category: agent.category,
         provider: agent.provider,
         model: agent.model,
+        file_search: agent.tools?.includes(Tools.file_search) === true,
+        tool_resources: agent.tools?.includes(Tools.file_search)
+          ? {
+              file_search: {
+                file_ids: agent.tool_resources?.file_search?.file_ids ?? [],
+              },
+            }
+          : undefined,
         projectIds: agent.projectIds,
         // @deprecated - isCollaborative replaced by ACL permissions
         isCollaborative: agent.isCollaborative,
@@ -395,6 +413,15 @@ const updateAgentHandler = async (req, res) => {
     }
     if (ocrConversion.tools) {
       updateData.tools = ocrConversion.tools;
+    }
+
+    const mergedTools = mergeAgentBuilderTools({
+      requestedTools: updateData.tools,
+      existingTools: existingAgent.tools ?? [],
+      role: req.user?.role,
+    });
+    if (mergedTools !== undefined) {
+      updateData.tools = mergedTools;
     }
 
     if (updateData.tools) {

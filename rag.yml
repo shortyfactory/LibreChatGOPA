@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata2:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - '5433:5432'
 
   rag_api:
     image: registry.librechat.ai/danny-avila/librechat-rag-api-dev:latest
@@ -20,8 +20,13 @@ services:
       - POSTGRES_DB=mydatabase
       - POSTGRES_USER=myuser
       - POSTGRES_PASSWORD=mypassword
+      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-azure}
+      - EMBEDDINGS_MODEL=${EMBEDDINGS_MODEL:-text-embedding-3-large}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY_SWEDEN}
+      - AZURE_OPENAI_ENDPOINT=https://${AZURE_OPENAI_INSTANCE_NAME}.openai.azure.com
+      - RAG_AZURE_OPENAI_API_VERSION=${RAG_AZURE_OPENAI_API_VERSION:-2024-05-01-preview}
     ports:
-      - "${RAG_PORT}:${RAG_PORT}"
+      - '${RAG_PORT}:${RAG_PORT}'
     depends_on:
       - vectordb
     env_file:

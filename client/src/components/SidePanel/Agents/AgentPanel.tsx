@@ -443,12 +443,16 @@ export default function AgentPanel() {
 
   const onSubmit = useCallback(
     async (data: AgentForm) => {
-      const tools = data.tools ?? [];
+      if (agent_id && !isAdmin && !canEdit) {
+        return;
+      }
+
+      const tools = Array.isArray(data.tools) ? [...data.tools] : [];
 
       if (isAdmin && data.execute_code === true) {
         tools.push(Tools.execute_code);
       }
-      if (isAdmin && data.file_search === true) {
+      if (data.file_search === true) {
         tools.push(Tools.file_search);
       }
       if (isAdmin && data.web_search === true) {
@@ -482,7 +486,7 @@ export default function AgentPanel() {
         }
         update.mutate({
           agent_id,
-          data: isAdmin ? { ...basePayload, tools } : basePayload,
+          data: { ...basePayload, tools },
         });
         return;
       }
@@ -500,11 +504,19 @@ export default function AgentPanel() {
         });
       }
 
-      create.mutate(
-        isAdmin ? { ...basePayload, model, tools, provider } : { ...basePayload, model, provider },
-      );
+      create.mutate({ ...basePayload, model, tools, provider });
     },
-    [agent_id, create, dirtyFields, handleAvatarUpload, isAdmin, update, showToast, localize],
+    [
+      agent_id,
+      canEdit,
+      create,
+      dirtyFields,
+      handleAvatarUpload,
+      isAdmin,
+      update,
+      showToast,
+      localize,
+    ],
   );
 
   const handleSelectAgent = useCallback(() => {
@@ -513,17 +525,16 @@ export default function AgentPanel() {
     }
   }, [agent_id, onSelectAgent]);
 
-  const canEditAgent = useMemo(() => {
-    if (!agentQuery.data?.id) {
-      return true;
-    }
-
-    if (isAdmin) {
-      return true;
-    }
-
-    return canEdit;
-  }, [agentQuery.data?.id, isAdmin, canEdit]);
+  const hasSelectedPersistedAgent =
+    Boolean(current_agent_id) && !isEphemeralAgent(current_agent_id);
+  const isUnavailableSelectedAgent =
+    hasSelectedPersistedAgent && !agentQuery.isInitialLoading && !agentQuery.data?.id;
+  const isReadOnlySelectedAgent =
+    hasSelectedPersistedAgent && Boolean(agentQuery.data?.id) && !isAdmin && !canEdit;
+  const shouldRenderAgentFooter =
+    !agentQuery.isInitialLoading &&
+    !isUnavailableSelectedAgent &&
+    (!hasSelectedPersistedAgent || isAdmin || canEdit);
 
   const effectiveActivePanel =
     !isAdmin && activePanel !== Panel.builder ? Panel.builder : activePanel;
@@ -578,7 +589,7 @@ export default function AgentPanel() {
           )}
         </div>
         {agentQuery.isInitialLoading && <AgentPanelSkeleton />}
-        {!canEditAgent && !agentQuery.isInitialLoading && (
+        {isUnavailableSelectedAgent && (
           <div className="flex h-[30vh] w-full items-center justify-center">
             <div className="text-center">
               <h2 className="text-token-text-primary m-2 text-xl font-semibold">
@@ -588,16 +599,20 @@ export default function AgentPanel() {
             </div>
           </div>
         )}
-        {canEditAgent && !agentQuery.isInitialLoading && effectiveActivePanel === Panel.model && (
-          <ModelPanel models={models} providers={providers} setActivePanel={setActivePanel} />
-        )}
-        {canEditAgent && !agentQuery.isInitialLoading && effectiveActivePanel === Panel.builder && (
-          <AgentConfig />
-        )}
-        {canEditAgent &&
+        {!isUnavailableSelectedAgent &&
+          !agentQuery.isInitialLoading &&
+          effectiveActivePanel === Panel.model && (
+            <ModelPanel models={models} providers={providers} setActivePanel={setActivePanel} />
+          )}
+        {!isUnavailableSelectedAgent &&
+          !agentQuery.isInitialLoading &&
+          effectiveActivePanel === Panel.builder && (
+            <AgentConfig readOnly={isReadOnlySelectedAgent} />
+          )}
+        {!isUnavailableSelectedAgent &&
           !agentQuery.isInitialLoading &&
           effectiveActivePanel === Panel.advanced && <AdvancedPanel />}
-        {canEditAgent && !agentQuery.isInitialLoading && (
+        {shouldRenderAgentFooter && (
           <AgentFooter
             createMutation={create}
             updateMutation={update}

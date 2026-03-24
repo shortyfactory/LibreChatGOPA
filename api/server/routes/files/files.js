@@ -6,7 +6,6 @@ const {
   getFoundryFileInfo,
   getFoundryFileArrayBuffer,
   isFoundryAgentsConfigured,
-  requireAdmin,
   verifyAgentUploadPermission,
 } = require('@librechat/api');
 const {
@@ -16,6 +15,8 @@ const {
   FileSources,
   SystemRoles,
   EModelEndpoint,
+  ResourceType,
+  PermissionBits,
   checkOpenAIStorage,
   isAssistantsEndpoint,
 } = require('librechat-data-provider');
@@ -59,6 +60,25 @@ const setDownloadHeaders = ({ file, res, filename = file.filename, type = file.t
   res.setHeader('Content-Disposition', `attachment; filename="${cleanedFilename}"`);
   res.setHeader('Content-Type', type ?? 'application/octet-stream');
   res.setHeader('X-File-Metadata', JSON.stringify(metadata));
+};
+
+const resolveUploadErrorMessage = (error) => {
+  const errorMessage = error?.message ?? '';
+
+  if (
+    errorMessage.includes('file_ids') ||
+    errorMessage.includes('Invalid file format') ||
+    errorMessage.includes('No OCR result') ||
+    errorMessage.includes('exceeds token limit') ||
+    errorMessage.includes('RAG_API_URL not defined') ||
+    errorMessage.includes('File search is not enabled for Agents') ||
+    errorMessage.includes('File embedding failed') ||
+    errorMessage.includes('Incorrect API key provided')
+  ) {
+    return errorMessage;
+  }
+
+  return 'Error processing file';
 };
 
 const tryFoundryFileDownload = async ({ file, file_id, res }) => {
@@ -118,7 +138,7 @@ router.get('/', async (req, res) => {
  * @param {string} agent_id - The agent ID to get files for
  * @returns {Promise<TFile[]>} Array of files attached to the agent
  */
-router.get('/agent/:agent_id', requireAdmin, async (req, res) => {
+router.get('/agent/:agent_id', async (req, res) => {
   try {
     const { agent_id } = req.params;
 
@@ -129,6 +149,24 @@ router.get('/agent/:agent_id', requireAdmin, async (req, res) => {
     const agent = await getAgent({ id: agent_id });
     if (!agent) {
       return res.status(200).json([]);
+    }
+
+    const isAuthor = agent.author?.toString() === req.user.id.toString();
+    if (req.user.role !== SystemRoles.ADMIN && !isAuthor) {
+      const hasViewPermission = await checkPermission({
+        userId: req.user.id,
+        role: req.user.role,
+        resourceType: ResourceType.AGENT,
+        resourceId: agent._id,
+        requiredPermission: PermissionBits.VIEW,
+      });
+
+      if (!hasViewPermission) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'You do not have permission to view files for this agent',
+        });
+      }
     }
 
     const agentFileIds = [];
@@ -169,8 +207,21 @@ router.delete('/', async (req, res) => {
       return res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
     }
 
-    if (req.body.agent_id && req.body.tool_resource && req.user.role !== SystemRoles.ADMIN) {
-      return res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
+    if (req.body.agent_id && req.body.tool_resource) {
+      const denied = await verifyAgentUploadPermission({
+        req,
+        res,
+        metadata: {
+          agent_id: req.body.agent_id,
+          tool_resource: req.body.tool_resource,
+        },
+        getAgent,
+        checkPermission,
+      });
+
+      if (denied) {
+        return;
+      }
     }
 
     const { files: _files } = req.body;
@@ -476,20 +527,8 @@ router.post('/', async (req, res) => {
 
     return await processAgentFileUpload({ req, res, metadata });
   } catch (error) {
-    let message = 'Error processing file';
     logger.error('[/files] Error processing file:', error);
-
-    if (error.message?.includes('file_ids')) {
-      message += ': ' + error.message;
-    }
-
-    if (
-      error.message?.includes('Invalid file format') ||
-      error.message?.includes('No OCR result') ||
-      error.message?.includes('exceeds token limit')
-    ) {
-      message = error.message;
-    }
+    const message = resolveUploadErrorMessage(error);
 
     try {
       await fs.unlink(req.file.path);

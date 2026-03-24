@@ -88,6 +88,7 @@ const {
   getFoundryFileArrayBuffer,
   getFoundryFileInfo,
   isFoundryAgentsConfigured,
+  verifyAgentUploadPermission,
 } = require('@librechat/api');
 const fs = require('fs');
 const { processDeleteRequest, processFileUpload } = require('~/server/services/Files/process');
@@ -188,6 +189,7 @@ describe('File Routes - Delete with Agent Access', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     isFoundryAgentsConfigured.mockReturnValue(false);
+    verifyAgentUploadPermission.mockResolvedValue(false);
     processFileUpload.mockImplementation(async ({ res }) =>
       res.status(200).json({
         message: 'File uploaded and processed successfully',
@@ -323,6 +325,11 @@ describe('File Routes - Delete with Agent Access', () => {
     });
 
     it('should prevent non-admin users from deleting agent builder files', async () => {
+      verifyAgentUploadPermission.mockImplementation(async ({ res }) => {
+        res.status(403).json({ error: 'Forbidden', message: 'Forbidden' });
+        return true;
+      });
+
       const response = await request(app)
         .delete('/files')
         .send({
@@ -339,6 +346,7 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(response.status).toBe(403);
       expect(response.body.message).toBe('Forbidden');
       expect(processDeleteRequest).not.toHaveBeenCalled();
+      expect(verifyAgentUploadPermission).toHaveBeenCalled();
     });
 
     it('should allow admins to delete agent builder files', async () => {
@@ -359,6 +367,49 @@ describe('File Routes - Delete with Agent Access', () => {
 
       expect(response.status).toBe(200);
       expect(processDeleteRequest).toHaveBeenCalled();
+    });
+
+    it('should allow non-admin users to delete file_search builder files they can edit', async () => {
+      const agent = await createAgent({
+        id: uuidv4(),
+        name: 'Test Agent',
+        provider: 'openai',
+        model: 'gpt-4',
+        author: authorId,
+        tool_resources: {
+          file_search: {
+            file_ids: [fileId],
+          },
+        },
+      });
+
+      const { grantPermission } = require('~/server/services/PermissionService');
+      await grantPermission({
+        principalType: PrincipalType.USER,
+        principalId: otherUserId,
+        resourceType: ResourceType.AGENT,
+        resourceId: agent._id,
+        accessRoleId: AccessRoleIds.AGENT_EDITOR,
+        grantedBy: authorId,
+      });
+
+      const response = await request(app)
+        .delete('/files')
+        .send({
+          agent_id: agent.id,
+          tool_resource: 'file_search',
+          files: [
+            {
+              file_id: fileId,
+              filepath: '/uploads/test.txt',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toBe('Files deleted successfully');
+      expect(processDeleteRequest).toHaveBeenCalled();
+      expect(verifyAgentUploadPermission).toHaveBeenCalled();
     });
 
     it('should allow deleting files accessible through shared agent', async () => {

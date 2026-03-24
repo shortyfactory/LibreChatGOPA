@@ -2,7 +2,7 @@ import type { IUser } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { Types } from 'mongoose';
 import { logger } from '@librechat/data-schemas';
-import { SystemRoles, ResourceType } from 'librechat-data-provider';
+import { SystemRoles, ResourceType, PermissionBits, EToolResources } from 'librechat-data-provider';
 import type { ServerRequest } from '~/types';
 
 export type AgentUploadAuthResult =
@@ -36,14 +36,25 @@ export async function checkAgentUploadAuth(
   deps: AgentUploadAuthDeps,
 ): Promise<AgentUploadAuthResult> {
   const { userId, userRole, agentId, toolResource, messageFile } = params;
-  const { getAgent } = deps;
+  const { getAgent, checkPermission } = deps;
 
   const isMessageAttachment = messageFile === true || messageFile === 'true';
   if (!agentId || toolResource == null || isMessageAttachment) {
     return { allowed: true };
   }
 
-  if (userRole !== SystemRoles.ADMIN) {
+  const agent = await getAgent({ id: agentId });
+  if (!agent) {
+    return { allowed: false, status: 404, error: 'Not Found', message: 'Agent not found' };
+  }
+
+  const isAuthor = agent.author?.toString() === userId.toString();
+
+  if (userRole === SystemRoles.ADMIN) {
+    return { allowed: true };
+  }
+
+  if (toolResource !== EToolResources.file_search) {
     logger.warn(
       `[agentUploadAuth] User ${userId} denied agent builder upload for ${agentId} (admin only)`,
     );
@@ -55,9 +66,28 @@ export async function checkAgentUploadAuth(
     };
   }
 
-  const agent = await getAgent({ id: agentId });
-  if (!agent) {
-    return { allowed: false, status: 404, error: 'Not Found', message: 'Agent not found' };
+  if (isAuthor) {
+    return { allowed: true };
+  }
+
+  const hasEditPermission = await checkPermission({
+    userId,
+    role: userRole,
+    resourceType: ResourceType.AGENT,
+    resourceId: agent._id,
+    requiredPermission: PermissionBits.EDIT,
+  });
+
+  if (!hasEditPermission) {
+    logger.warn(
+      `[agentUploadAuth] User ${userId} denied file_search upload for ${agentId} (missing EDIT)`,
+    );
+    return {
+      allowed: false,
+      status: 403,
+      error: 'Forbidden',
+      message: 'You do not have permission to manage files for this agent',
+    };
   }
 
   return { allowed: true };

@@ -101,6 +101,17 @@ async function uploadVectors({ req, file, file_id, entity_id, storageMetadata })
     }
 
     if (!responseData.status) {
+      let ragError = null;
+      if (typeof responseData.error === 'string' && responseData.error.length > 0) {
+        ragError = responseData.error;
+      } else if (typeof responseData.message === 'string' && responseData.message.length > 0) {
+        ragError = responseData.message;
+      }
+
+      if (ragError) {
+        throw new Error(`File embedding failed. ${ragError}`);
+      }
+
       throw new Error('File embedding failed.');
     }
 

@@ -9,6 +9,7 @@ import type { Agent } from 'librechat-data-provider';
 
 // Mock toast context - define this after all mocks
 let mockShowToast: jest.Mock;
+const mockUseResourcePermissions = jest.fn();
 
 // Mock notification severity enum before other imports
 jest.mock('~/common/types', () => ({
@@ -102,10 +103,7 @@ jest.mock('~/hooks', () => ({
 }));
 
 jest.mock('~/hooks/useResourcePermissions', () => ({
-  useResourcePermissions: () => ({
-    hasPermission: jest.fn(() => true),
-    isLoading: false,
-  }),
+  useResourcePermissions: (...args: unknown[]) => mockUseResourcePermissions(...args),
 }));
 
 jest.mock('~/Providers/AgentPanelContext', () => ({
@@ -143,7 +141,12 @@ jest.mock('./Advanced/AdvancedPanel', () => ({
 
 jest.mock('./AgentConfig', () => ({
   __esModule: true,
-  default: () => <div>{`Agent Config`}</div>,
+  default: ({ readOnly }: { readOnly?: boolean }) => (
+    <div
+      data-read-only={readOnly ? 'true' : 'false'}
+      data-testid="agent-config"
+    >{`Agent Config`}</div>
+  ),
 }));
 
 jest.mock('./AgentSelect', () => ({
@@ -291,9 +294,38 @@ describe('AgentPanel - Update Agent Toast Messages', () => {
     jest.clearAllMocks();
     mockShowToast = jest.fn();
     mockFormSubmitHandler = null;
+    mockUseResourcePermissions.mockReturnValue({
+      hasPermission: jest.fn(() => true),
+      isLoading: false,
+    });
   });
 
   describe('AgentPanel', () => {
+    it('should show shared agent details in read-only mode when edit permission is missing', () => {
+      const { mockUseGetAgentByIdQuery } = setupMocks();
+
+      mockUseResourcePermissions.mockReturnValue({
+        hasPermission: jest.fn(() => false),
+        isLoading: false,
+      });
+
+      mockAgentQuery(mockUseGetAgentByIdQuery, {
+        name: 'Shared Agent',
+        description: 'Shared description',
+        instructions: 'Shared instructions',
+        author: 'user-456',
+      });
+
+      const Wrapper = createWrapper();
+      const { getByTestId, queryByTestId, queryByText } = render(<AgentPanel />, {
+        wrapper: Wrapper,
+      });
+
+      expect(queryByText('com_agents_not_available')).not.toBeInTheDocument();
+      expect(getByTestId('agent-config')).toHaveAttribute('data-read-only', 'true');
+      expect(queryByTestId('save-agent-button')).not.toBeInTheDocument();
+    });
+
     it('should show "no changes" toast when version does not change', async () => {
       const { mockUseGetAgentByIdQuery, mockUpdateAgent } = setupMocks();
 

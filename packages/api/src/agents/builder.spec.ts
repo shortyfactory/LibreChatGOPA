@@ -1,6 +1,10 @@
-import { SystemRoles } from 'librechat-data-provider';
+import { SystemRoles, Tools } from 'librechat-data-provider';
 import type { AgentCreateParams, AgentUpdateParams } from 'librechat-data-provider';
-import { sanitizeAgentCreatePayload, sanitizeAgentUpdatePayload } from './builder';
+import {
+  mergeAgentBuilderTools,
+  sanitizeAgentCreatePayload,
+  sanitizeAgentUpdatePayload,
+} from './builder';
 
 describe('sanitizeAgentCreatePayload', () => {
   it('keeps admin-only fields for admins', () => {
@@ -41,6 +45,7 @@ describe('sanitizeAgentCreatePayload', () => {
       provider: 'openAI',
       model: 'gpt-5',
       category: 'general_support',
+      tools: ['execute_code'],
     });
   });
 });
@@ -85,6 +90,57 @@ describe('sanitizeAgentUpdatePayload', () => {
       instructions: 'Updated instructions',
       category: 'general_support',
       avatar: null,
+      tools: ['execute_code'],
     });
+  });
+});
+
+describe('mergeAgentBuilderTools', () => {
+  it('preserves all requested tools for admins', () => {
+    expect(
+      mergeAgentBuilderTools({
+        requestedTools: [Tools.execute_code, Tools.file_search, 'search_mcp_docs'],
+        role: SystemRoles.ADMIN,
+      }),
+    ).toEqual([Tools.execute_code, Tools.file_search, 'search_mcp_docs']);
+  });
+
+  it('allows non-admin users to enable file_search without touching other existing tools', () => {
+    expect(
+      mergeAgentBuilderTools({
+        requestedTools: [Tools.file_search],
+        existingTools: [Tools.execute_code, 'search_mcp_docs'],
+        role: SystemRoles.USER,
+      }),
+    ).toEqual([Tools.execute_code, 'search_mcp_docs', Tools.file_search]);
+  });
+
+  it('allows non-admin users to disable file_search without touching other existing tools', () => {
+    expect(
+      mergeAgentBuilderTools({
+        requestedTools: [],
+        existingTools: [Tools.execute_code, Tools.file_search, 'search_mcp_docs'],
+        role: SystemRoles.USER,
+      }),
+    ).toEqual([Tools.execute_code, 'search_mcp_docs']);
+  });
+
+  it('ignores non-file-search tool requests from non-admin users', () => {
+    expect(
+      mergeAgentBuilderTools({
+        requestedTools: [Tools.execute_code, 'search_mcp_docs'],
+        existingTools: [Tools.execute_code],
+        role: SystemRoles.USER,
+      }),
+    ).toEqual([Tools.execute_code]);
+  });
+
+  it('returns undefined for non-admin users when tools were not part of the payload', () => {
+    expect(
+      mergeAgentBuilderTools({
+        existingTools: [Tools.file_search],
+        role: SystemRoles.USER,
+      }),
+    ).toBeUndefined();
   });
 });
