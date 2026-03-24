@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { EModelEndpoint } from 'librechat-data-provider';
+import { EModelEndpoint, QueryKeys } from 'librechat-data-provider';
 import type { TEndpointsConfig, TStartupConfig, TPreset } from 'librechat-data-provider';
 import {
   clearModelForNonEphemeralAgent,

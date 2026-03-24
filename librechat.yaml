@@ -1,0 +1,279 @@
+# For more information, see the Configuration Guide:
+# https://www.librechat.ai/docs/configuration/librechat_yaml
+
+version: 1.3.2
+
+cache: true
+
+interface:
+  customWelcome: 'Welcome to GOPA AI CHATBOT ! Enjoy your experience.'
+  fileSearch: true
+  webSearch: true
+
+  # Cache le "Code Interpreter API" LibreChat (celui qui demande une clé LibreChat)
+  # Azure Assistants Code Interpreter reste OK.
+  runCode: false
+
+  privacyPolicy:
+    externalUrl: 'https://librechat.ai/privacy-policy'
+    openNewTab: true
+
+  termsOfService:
+    externalUrl: 'https://librechat.ai/tos'
+    openNewTab: true
+    modalAcceptance: true
+    modalTitle: 'Terms of Service for LibreChat'
+    modalContent: |
+      # Terms and Conditions for GOPA AI CHATBOT
+
+      *Effective Date: March 16, 2026*.
+
+  authBranding:
+    title:
+      en: 'GOPA AI Chatbot'
+    imageUrl: '/assets/chatbot-ui-logo.png'
+    imageAlt:
+      en: 'GOPA AI Chatbot visual'
+    notice:
+      text:
+        en: 'I confirm that I have completed the GOPA AI Training and that I have read and agree with the GOPA Group Policy on the Use of Generative AI. I acknowledge the importance of adhering to these guidelines to maintain the integrity and effectiveness of our GOPA AI Chatbot.'
+
+  externalLinks:
+    - label:
+        en: 'GOPA AI Training'
+      url: 'https://gopagroup.sharepoint.com/sites/Academy/SitePages/GOPA-Group-AI-Chatbot.aspx'
+      locations: ['login', 'account']
+    - label:
+        en: 'GOPA Group Policy on the Use of Generative AI'
+      url: 'https://gopagroup.sharepoint.com/sites/GOPAGroup-LearningPlatform/SiteAssets/Forms/AllItems.aspx?id=%2Fsites%2FGOPAGroup%2DLearningPlatform%2FSiteAssets%2FSitePages%2FGOPA%2DGroup%2DAI%2DChatbot%2FGOPA%2DGroup%5FPolicy%2Don%2Dthe%2DUse%2Dof%2DGenerative%2DAI%2Epdf&parent=%2Fsites%2FGOPAGroup%2DLearningPlatform%2FSiteAssets%2FSitePages%2FGOPA%2DGroup%2DAI%2DChatbot'
+      locations: ['login', 'account']
+
+  endpointsMenu: true
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts:
+    use: true
+    share: true
+    public: false
+  bookmarks: true
+  memories: false
+  multiConvo: true
+  agents:
+    use: true
+    share: true
+    public: false
+  peoplePicker:
+    users: true
+    groups: true
+    roles: true
+  marketplace:
+    use: false
+  fileCitations: true
+  mcpServers:
+    use: true
+    share: false
+    create: false
+    public: false
+
+registration:
+  socialLogins: ['github', 'google', 'discord', 'openid', 'facebook', 'apple', 'saml']
+
+actions:
+  allowedDomains:
+    - 'swapi.dev'
+    - 'librechat.ai'
+    - 'google.com'
+
+webSearch:
+  serperApiKey: "${SERPER_API_KEY}"
+  searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
+  searxngApiKey: "${SEARXNG_API_KEY}"
+  searchProvider: "searxng"
+
+  firecrawlApiKey: "${FIRECRAWL_API_KEY}"
+  firecrawlApiUrl: "${FIRECRAWL_API_URL}"
+  firecrawlVersion: "${FIRECRAWL_VERSION}"
+  scraperProvider: "firecrawl"
+
+  jinaApiKey: "${JINA_API_KEY}"
+  jinaApiUrl: "${JINA_API_URL}"
+  cohereApiKey: "${COHERE_API_KEY}"
+  rerankerType: "jina"
+
+  scraperTimeout: 7500
+  safeSearch: 1
+
+# -------------------------------------------------------------------
+# Model Specs:
+# - enforce:false pour permettre les assistants Azure dynamiques
+# - prioritize:true pour garder un comportement stable au démarrage
+# -------------------------------------------------------------------
+modelSpecs:
+  enforce: false
+  prioritize: true
+  addedEndpoints:
+    - azureAssistants
+    - agents
+  list:
+    - name: "azure-gpt-4-1-web"
+      label: "gpt-4.1"
+      description: "Web Search ON"
+      default: true
+      group: "Azure OpenAI"
+      groupIcon: "azureOpenAI"
+      webSearch: true
+      preset:
+        endpoint: "azureOpenAI"
+        model: "gpt-4.1"
+        web_search: true
+        useResponsesApi: true
+        temperature: 0.3
+
+    - name: "azure-gpt-5-web"
+      label: "gpt-5"
+      description: "Web Search ON"
+      group: "Azure OpenAI"
+      webSearch: true
+      preset:
+        endpoint: "azureOpenAI"
+        model: "gpt-5"
+        web_search: true
+        useResponsesApi: true
+        temperature: 0.3
+
+    - name: "azure-gpt-5-1-web"
+      label: "gpt-5.1"
+      description: "Web Search ON"
+      group: "Azure OpenAI"
+      webSearch: true
+      preset:
+        endpoint: "azureOpenAI"
+        model: "gpt-5.1"
+        web_search: true
+        useResponsesApi: true
+        temperature: 0.3
+
+    - name: "azure-gpt-5-2-web"
+      label: "gpt-5.2"
+      description: "Web Search ON"
+      group: "Azure OpenAI"
+      webSearch: true
+      preset:
+        endpoint: "azureOpenAI"
+        model: "gpt-5.2"
+        web_search: true
+        useResponsesApi: true
+        temperature: 0.3
+
+    - name: "azure-gpt-5-4-web"
+      label: "gpt-5.4"
+      description: "Web Search ON"
+      group: "Azure OpenAI"
+      webSearch: true
+      preset:
+        endpoint: "azureOpenAI"
+        model: "gpt-5.4"
+        web_search: true
+        useResponsesApi: true
+        temperature: 0.3
+
+endpoints:
+  all:
+    customParams:
+      paramDefinitions:
+        - key: 'temperature'
+          default: 0.3
+        - key: 'web_search'
+          default: true
+        - key: 'useResponsesApi'
+          default: true
+
+  azureOpenAI:
+    titleConvo: true
+    titleModel: "gpt-4o"
+    plugins: false
+
+    # Active Assistants via Azure OpenAI
+    assistants: true
+
+    groups:
+      - group: "deployment-chatbot-azure-key-rg"
+        apiKey: "${AZURE_OPENAI_API_KEY_SWEDEN}"
+
+        # IMPORTANT: mets cette variable en FQDN dans le .env :
+        # AZURE_OPENAI_INSTANCE_NAME=my-resource-sweden.cognitiveservices.azure.com
+        instanceName: "${AZURE_OPENAI_INSTANCE_NAME}"
+
+        # Reco Azure Assistants: 2024-02-15-preview+ (ici 2024-05-01-preview)
+        version: "2024-05-01-preview"
+
+        assistants: true
+        dropParams: ["user"]
+
+        addParams:
+          useResponsesApi: true
+
+        # On garde les modèles ici (RAG/Services),
+        # mais ils ne sont pas sélectionnables côté UI grâce à modelSpecs.
+        models:
+          gpt-35-turbo-16k:
+            deploymentName: "gpt-35-turbo-16k"
+
+          gpt-4-turbo:
+            deploymentName: "gpt-4-turbo"
+
+          gpt-4.1:
+            deploymentName: "gpt-4.1"
+
+          gpt-4o:
+            deploymentName: "gpt-4o"
+
+          gpt-5:
+            deploymentName: "gpt-5"
+
+          gpt-5-mini:
+            deploymentName: "gpt-5-mini"
+
+          gpt-5.1:
+            deploymentName: "gpt-5.1"
+
+          gpt-5.2:
+            deploymentName: "gpt-5.2"
+
+          gpt-5.4:
+            deploymentName: "gpt-5.4"
+
+          o3-mini:
+            deploymentName: "o3-mini"
+
+          o4-mini:
+            deploymentName: "o4-mini"
+
+          text-embedding-3-large:
+            deploymentName: "text-embedding-3-large"
+
+          text-embedding-ada-002:
+            deploymentName: "text-embedding-ada-002"
+
+      - group: "mistral-azure"
+        apiKey: "${AZURE_OPENAI_API_KEY_SWEDEN}"
+        instanceName: "${AZURE_OPENAI_INSTANCE_NAME}"
+        version: "2024-05-01-preview"
+        dropParams: ["user"]
+
+        addParams:
+          useResponsesApi: false
+
+        models:
+          Mistral-Large-3:
+            deploymentName: "Mistral-Large-3"
+
+  azureAssistants:
+    disableBuilder: false
+    pollIntervalMs: 2500
+    timeoutMs: 300000
+
+    # Evite "retrieval" si tu ne l’utilises pas (souvent source de soucis)
+    capabilities: ["code_interpreter", "actions", "tools"]

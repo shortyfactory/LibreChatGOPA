@@ -117,7 +117,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToMemories && hasAccessToReadMemories) {
+    if (interfaceConfig.memories !== false && hasAccessToMemories && hasAccessToReadMemories) {
       links.push({
         title: 'com_ui_memories',
         label: '',
@@ -189,6 +189,7 @@ export default function useSideNavLinks({
     hasAccessToAgents,
     hasAccessToCreateAgents,
     hasAccessToPrompts,
+    interfaceConfig.memories,
     hasAccessToMemories,
     hasAccessToReadMemories,
     interfaceConfig.parameters,
