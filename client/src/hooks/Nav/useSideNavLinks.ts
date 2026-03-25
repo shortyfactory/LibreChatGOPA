@@ -7,12 +7,14 @@ import {
   PermissionTypes,
   isParamEndpoint,
   isAgentsEndpoint,
-  isAssistantsEndpoint,
-  isAzureAssistantsEndpoint,
 } from 'librechat-data-provider';
 import type { TInterfaceConfig, TEndpointsConfig } from 'librechat-data-provider';
 import MCPBuilderPanel from '~/components/SidePanel/MCPBuilder/MCPBuilderPanel';
 import type { NavLink } from '~/common';
+import {
+  getAssistantBuilderEndpoint,
+  isAzureAssistantBuilderEndpoint,
+} from '~/utils/assistantBuilder';
 import AgentPanelSwitch from '~/components/SidePanel/Agents/AgentPanelSwitch';
 import BookmarkPanel from '~/components/SidePanel/Bookmarks/BookmarkPanel';
 import PanelSwitch from '~/components/SidePanel/Builder/PanelSwitch';
@@ -57,10 +59,6 @@ export default function useSideNavLinks({
     permissionType: PermissionTypes.AGENTS,
     permission: Permissions.USE,
   });
-  const hasAccessToCreateAgents = useHasAccess({
-    permissionType: PermissionTypes.AGENTS,
-    permission: Permissions.CREATE,
-  });
   const hasAccessToUseMCPSettings = useHasAccess({
     permissionType: PermissionTypes.MCP_SERVERS,
     permission: Permissions.USE,
@@ -73,18 +71,16 @@ export default function useSideNavLinks({
 
   const Links = useMemo(() => {
     const links: NavLink[] = [];
-    if (
-      isAssistantsEndpoint(endpoint) &&
-      ((endpoint === EModelEndpoint.assistants &&
-        endpointsConfig?.[EModelEndpoint.assistants] &&
-        endpointsConfig[EModelEndpoint.assistants].disableBuilder !== true) ||
-        (isAzureAssistantsEndpoint(endpoint) &&
-          endpointsConfig?.[EModelEndpoint.azureAssistants] &&
-          endpointsConfig[EModelEndpoint.azureAssistants].disableBuilder !== true)) &&
-      keyProvided
-    ) {
+    const assistantBuilderEndpoint = getAssistantBuilderEndpoint({
+      currentEndpoint: endpoint,
+      endpointsConfig,
+    });
+
+    if (assistantBuilderEndpoint != null && keyProvided) {
       links.push({
-        title: 'com_sidepanel_assistant_builder',
+        title: isAzureAssistantBuilderEndpoint(assistantBuilderEndpoint)
+          ? 'com_sidepanel_azure_assistant'
+          : 'com_sidepanel_assistant_builder',
         label: '',
         icon: Blocks,
         id: EModelEndpoint.assistants,
@@ -95,7 +91,6 @@ export default function useSideNavLinks({
     if (
       endpointsConfig?.[EModelEndpoint.agents] &&
       hasAccessToAgents &&
-      hasAccessToCreateAgents &&
       endpointsConfig[EModelEndpoint.agents].disableBuilder !== true
     ) {
       links.push({
@@ -187,7 +182,6 @@ export default function useSideNavLinks({
     endpointsConfig,
     keyProvided,
     hasAccessToAgents,
-    hasAccessToCreateAgents,
     hasAccessToPrompts,
     interfaceConfig.memories,
     hasAccessToMemories,

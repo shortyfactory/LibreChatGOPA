@@ -3,6 +3,7 @@ import {
   SystemRoles,
   defaultAssistantsVersion,
   resolveAssistantsConfigEndpoint,
+  EModelEndpoint,
 } from 'librechat-data-provider';
 import type { Action, TEndpointsConfig, AssistantsEndpoint } from 'librechat-data-provider';
 import type { ActionsEndpoint } from '~/common';
@@ -11,6 +12,7 @@ import {
   useGetEndpointsQuery,
   useGetAssistantDocsQuery,
 } from '~/data-provider';
+import { getAssistantBuilderEndpoint } from '~/utils/assistantBuilder';
 import AssistantPanel from './AssistantPanel';
 import { useChatContext } from '~/Providers';
 import ActionsPanel from './ActionsPanel';
@@ -27,17 +29,31 @@ export default function PanelSwitch() {
   );
 
   const { data: endpointsConfig = {} as TEndpointsConfig } = useGetEndpointsQuery();
-  const { data: actions = [] } = useGetActionsQuery(conversation?.endpoint as ActionsEndpoint);
-  const { data: documentsMap = null } = useGetAssistantDocsQuery(conversation?.endpoint ?? '', {
+  const assistantEndpoint = useMemo(
+    () =>
+      getAssistantBuilderEndpoint({
+        currentEndpoint: conversation?.endpoint,
+        endpointsConfig,
+      }),
+    [conversation?.endpoint, endpointsConfig],
+  );
+  const { data: actions = [] } = useGetActionsQuery(
+    (assistantEndpoint ?? EModelEndpoint.assistants) as ActionsEndpoint,
+    {
+      enabled: assistantEndpoint != null,
+    },
+  );
+  const { data: documentsMap = null } = useGetAssistantDocsQuery(assistantEndpoint ?? '', {
+    enabled: assistantEndpoint != null,
     select: (data) => new Map(data.map((dbA) => [dbA.assistant_id, dbA])),
   });
   const configEndpoint = useMemo(
-    () => resolveAssistantsConfigEndpoint(conversation?.endpoint),
-    [conversation?.endpoint],
+    () => (assistantEndpoint ? resolveAssistantsConfigEndpoint(assistantEndpoint) : undefined),
+    [assistantEndpoint],
   );
 
   const assistantsConfig = useMemo(
-    () => endpointsConfig?.[configEndpoint ?? ''],
+    () => (configEndpoint ? endpointsConfig?.[configEndpoint] : undefined),
     [configEndpoint, endpointsConfig],
   );
   const canEditAssistants = user?.role === SystemRoles.ADMIN;
@@ -63,11 +79,14 @@ export default function PanelSwitch() {
     }
   }, [action, activePanel, canEditAssistants]);
 
-  if (!conversation?.endpoint) {
+  if (!assistantEndpoint) {
     return null;
   }
 
-  const version = assistantsConfig?.version ?? defaultAssistantsVersion[conversation.endpoint];
+  const version =
+    assistantsConfig?.version ??
+    defaultAssistantsVersion[assistantEndpoint] ??
+    defaultAssistantsVersion[configEndpoint ?? assistantEndpoint];
 
   if (activePanel === Panel.actions || action) {
     return (
@@ -81,7 +100,7 @@ export default function PanelSwitch() {
         setActivePanel={setActivePanel}
         assistant_id={currentAssistantId}
         setCurrentAssistantId={setCurrentAssistantId}
-        endpoint={conversation.endpoint as AssistantsEndpoint}
+        endpoint={assistantEndpoint as AssistantsEndpoint}
         version={version}
       />
     );
@@ -97,7 +116,7 @@ export default function PanelSwitch() {
         setActivePanel={setActivePanel}
         assistant_id={currentAssistantId}
         setCurrentAssistantId={setCurrentAssistantId}
-        endpoint={conversation.endpoint as AssistantsEndpoint}
+        endpoint={assistantEndpoint as AssistantsEndpoint}
         assistantsConfig={assistantsConfig}
         version={version}
       />
