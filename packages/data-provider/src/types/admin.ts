@@ -135,6 +135,8 @@ export interface AdminAnalyticsUserSummary {
   email: string | null;
   isSuperadmin: boolean;
   prompts: number;
+  agents: number;
+  conversations: number;
   ownPromptsLibrary: number;
   ownPresetsLibrary: number;
   uploadFiles: number;

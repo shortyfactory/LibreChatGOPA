@@ -92,6 +92,8 @@ describe('Admin routes', () => {
   let modelsToCleanup = [];
   let currentAdminId;
   let User;
+  let Agent;
+  let Conversation;
   let Prompt;
   let PromptGroup;
   let Preset;
@@ -108,6 +110,8 @@ describe('Admin routes', () => {
     Object.assign(mongoose.models, models);
 
     User = models.User;
+    Agent = models.Agent;
+    Conversation = models.Conversation;
     Prompt = models.Prompt;
     PromptGroup = models.PromptGroup;
     Preset = models.Preset;
@@ -259,7 +263,7 @@ describe('Admin routes', () => {
     expect(await __stores[ViolationTypes.BAN].get(String(targetUserId))).toBeUndefined();
   });
 
-  test('GET /admin/analytics/users returns prompt, preset, and upload counts', async () => {
+  test('GET /admin/analytics/users returns prompt, agent, conversation, preset, and upload counts', async () => {
     const analyticsUserId = new mongoose.Types.ObjectId();
     const promptId = new mongoose.Types.ObjectId();
 
@@ -292,6 +296,29 @@ describe('Admin routes', () => {
       type: 'text',
     });
 
+    await Agent.create({
+      id: 'agent_analytics',
+      name: 'Analytics Agent',
+      provider: 'openai',
+      model: 'gpt-4.1',
+      author: analyticsUserId,
+    });
+
+    await Conversation.create([
+      {
+        conversationId: 'analytics-convo-1',
+        title: 'Analytics Conversation 1',
+        user: String(analyticsUserId),
+        endpoint: 'openAI',
+      },
+      {
+        conversationId: 'analytics-convo-2',
+        title: 'Analytics Conversation 2',
+        user: String(analyticsUserId),
+        endpoint: 'openAI',
+      },
+    ]);
+
     await Preset.create({
       presetId: 'preset-analytics',
       title: 'Analytics Preset',
@@ -320,6 +347,8 @@ describe('Admin routes', () => {
       expect.objectContaining({
         id: String(analyticsUserId),
         prompts: 1,
+        agents: 1,
+        conversations: 2,
         ownPromptsLibrary: 1,
         ownPresetsLibrary: 1,
         uploadFiles: 1,

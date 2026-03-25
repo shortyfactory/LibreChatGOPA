@@ -56,6 +56,8 @@ export const createAdminAnalyticsUsersResponse = ({
   totalUsers,
   users,
   promptCounts,
+  agentCounts,
+  conversationCounts,
   promptGroupCounts,
   presetCounts,
   fileCounts,
@@ -65,6 +67,8 @@ export const createAdminAnalyticsUsersResponse = ({
   totalUsers: number;
   users: AdminAnalyticsUserRow[];
   promptCounts: AdminCountRow[];
+  agentCounts: AdminCountRow[];
+  conversationCounts: AdminCountRow[];
   promptGroupCounts: AdminCountRow[];
   presetCounts: AdminCountRow[];
   fileCounts: AdminCountRow[];
@@ -74,6 +78,8 @@ export const createAdminAnalyticsUsersResponse = ({
   const page = parseAdminPage(query.page);
   const search = parseAdminSearch(query.search);
   const promptMap = createCountMap(promptCounts);
+  const agentMap = createCountMap(agentCounts);
+  const conversationMap = createCountMap(conversationCounts);
   const promptGroupMap = createCountMap(promptGroupCounts);
   const presetMap = createCountMap(presetCounts);
   const fileMap = createCountMap(fileCounts);
@@ -97,6 +103,8 @@ export const createAdminAnalyticsUsersResponse = ({
         email: user.email ?? null,
         isSuperadmin: user.role === 'ADMIN',
         prompts: promptMap.get(id) ?? 0,
+        agents: agentMap.get(id) ?? 0,
+        conversations: conversationMap.get(id) ?? 0,
         ownPromptsLibrary: promptGroupMap.get(id) ?? 0,
         ownPresetsLibrary: presetMap.get(id) ?? 0,
         uploadFiles: Math.max(fileMap.get(id) ?? 0, uploadCountMap.get(id) ?? 0),

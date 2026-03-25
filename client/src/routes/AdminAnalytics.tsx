@@ -327,6 +327,12 @@ export default function AdminAnalytics() {
                     {localize('com_ui_prompts')}
                   </th>
                   <th className="px-4 py-3 font-medium text-text-primary">
+                    {localize('com_ui_agents')}
+                  </th>
+                  <th className="px-4 py-3 font-medium text-text-primary">
+                    {localize('com_ui_admin_conversations')}
+                  </th>
+                  <th className="px-4 py-3 font-medium text-text-primary">
                     {localize('com_ui_admin_upload_files')}
                   </th>
                 </tr>
@@ -337,12 +343,14 @@ export default function AdminAnalytics() {
                     <td className="px-4 py-3 text-text-primary">{row.username}</td>
                     <td className="px-4 py-3 text-text-secondary">{row.email ?? '-'}</td>
                     <td className="px-4 py-3 text-text-secondary">{row.prompts}</td>
+                    <td className="px-4 py-3 text-text-secondary">{row.agents}</td>
+                    <td className="px-4 py-3 text-text-secondary">{row.conversations}</td>
                     <td className="px-4 py-3 text-text-secondary">{row.uploadFiles}</td>
                   </tr>
                 ))}
                 {(usersQuery.data?.users.length ?? 0) === 0 ? (
                   <tr className="border-t border-border-light">
-                    <td colSpan={4} className="px-4 py-4 text-center text-text-secondary">
+                    <td colSpan={6} className="px-4 py-4 text-center text-text-secondary">
                       {localize('com_ui_admin_users_no_results')}
                     </td>
                   </tr>

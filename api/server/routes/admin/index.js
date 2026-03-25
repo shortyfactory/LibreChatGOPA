@@ -171,37 +171,54 @@ router.get('/analytics/users', async (req, res) => {
       await syncSidebarUploadCountsFromFiles({ userIds });
     }
 
-    const [promptCounts, promptGroupCounts, presetCounts, fileCounts, uploadCountMap] =
-      await Promise.all([
-        Prompt.aggregate([
-          { $match: { author: { $in: userIds } } },
-          { $group: { _id: '$author', count: { $sum: 1 } } },
-        ]),
-        PromptGroup.aggregate([
-          { $match: { author: { $in: userIds } } },
-          { $group: { _id: '$author', count: { $sum: 1 } } },
-        ]),
-        Preset.aggregate([
-          { $match: { user: { $in: userIdStrings } } },
-          { $group: { _id: '$user', count: { $sum: 1 } } },
-        ]),
-        File.aggregate([
-          {
-            $match: {
-              user: { $in: userIds },
-              $or: [{ retentionEligible: true }, { context: { $in: ELIGIBLE_CONTEXTS } }],
-            },
+    const [
+      promptCounts,
+      agentCounts,
+      conversationCounts,
+      promptGroupCounts,
+      presetCounts,
+      fileCounts,
+      uploadCountMap,
+    ] = await Promise.all([
+      Prompt.aggregate([
+        { $match: { author: { $in: userIds } } },
+        { $group: { _id: '$author', count: { $sum: 1 } } },
+      ]),
+      Agent.aggregate([
+        { $match: { author: { $in: userIds } } },
+        { $group: { _id: '$author', count: { $sum: 1 } } },
+      ]),
+      Conversation.aggregate([
+        { $match: { user: { $in: userIdStrings } } },
+        { $group: { _id: '$user', count: { $sum: 1 } } },
+      ]),
+      PromptGroup.aggregate([
+        { $match: { author: { $in: userIds } } },
+        { $group: { _id: '$author', count: { $sum: 1 } } },
+      ]),
+      Preset.aggregate([
+        { $match: { user: { $in: userIdStrings } } },
+        { $group: { _id: '$user', count: { $sum: 1 } } },
+      ]),
+      File.aggregate([
+        {
+          $match: {
+            user: { $in: userIds },
+            $or: [{ retentionEligible: true }, { context: { $in: ELIGIBLE_CONTEXTS } }],
           },
-          { $group: { _id: '$user', count: { $sum: 1 } } },
-        ]),
-        getSidebarUploadCountsByUserIds(userIds),
-      ]);
+        },
+        { $group: { _id: '$user', count: { $sum: 1 } } },
+      ]),
+      getSidebarUploadCountsByUserIds(userIds),
+    ]);
 
     const response = createAdminAnalyticsUsersResponse({
       query: req.query,
       totalUsers,
       users,
       promptCounts,
+      agentCounts,
+      conversationCounts,
       promptGroupCounts,
       presetCounts,
       fileCounts,
