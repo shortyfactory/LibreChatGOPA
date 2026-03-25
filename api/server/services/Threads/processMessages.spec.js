@@ -12,6 +12,9 @@ describe('processMessages', () => {
     openai = {};
     client = {
       processedFileIds: new Set(),
+      req: {
+        user: { id: 'test-user-id' },
+      },
     };
     jest.clearAllMocks();
     retrieveAndProcessFile.mockReset();
@@ -43,6 +46,7 @@ describe('processMessages', () => {
           },
         ],
         created_at: 1,
+        assistant_id: 'asst_legacy',
       },
     ];
 
@@ -80,6 +84,7 @@ describe('processMessages', () => {
           },
         ],
         created_at: 1,
+        assistant_id: 'asst_legacy',
       },
     ];
 
@@ -113,6 +118,7 @@ describe('processMessages', () => {
           },
         ],
         created_at: 1,
+        assistant_id: 'asst_legacy',
       },
     ];
 
@@ -137,6 +143,7 @@ describe('processMessages', () => {
           },
         ],
         created_at: 1,
+        assistant_id: 'asst_legacy',
       },
     ];
 
@@ -649,14 +656,123 @@ These points highlight Harry's initial experiences in the magical world and set 
 
     const result = await processMessages({
       openai: {},
-      client: { processedFileIds: new Set() },
+      client: {
+        processedFileIds: new Set(),
+        req: {
+          user: { id: 'test-user-id' },
+        },
+      },
       messages,
     });
 
-    const expectedText = 'Here is a file path: /path/to/test.txt';
+    const expectedText =
+      'Here is a file path: /api/files/download/test-user-id/file-XXXXXXXXXXXXXXXXXXXX';
 
     expect(result.text).toBe(expectedText);
     expect(result.edited).toBe(true);
+  });
+
+  test('handles already processed FILE_PATH annotations with download links', async () => {
+    const messages = [
+      {
+        content: [
+          {
+            type: 'text',
+            text: {
+              value: 'Download here: [file_path]',
+              annotations: [
+                {
+                  type: 'file_path',
+                  text: '[file_path]',
+                  start_index: 15,
+                  end_index: 26,
+                  file_path: {
+                    file_id: 'file-XXXXXXXXXXXXXXXXXXXX',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        created_at: 1,
+      },
+    ];
+
+    retrieveAndProcessFile.mockResolvedValue({
+      filename: 'tableau_3x3.xlsx',
+      filepath:
+        'https://api.openai.com/v1/files/test-user-id/file-XXXXXXXXXXXXXXXXXXXX/tableau_3x3.xlsx',
+    });
+
+    const result = await processMessages({
+      openai: {},
+      client: {
+        processedFileIds: new Set(['file-XXXXXXXXXXXXXXXXXXXX']),
+        req: {
+          user: { id: 'test-user-id' },
+        },
+      },
+      messages,
+    });
+
+    expect(result.text).toBe(
+      'Download here: /api/files/download/test-user-id/file-XXXXXXXXXXXXXXXXXXXX',
+    );
+    expect(result.edited).toBe(true);
+  });
+
+  test('uses the resolved file_id for FILE_PATH downloads when assistant annotations expose attachment ids', async () => {
+    const messages = [
+      {
+        content: [
+          {
+            type: 'text',
+            text: {
+              value: 'Download here: [file_path]',
+              annotations: [
+                {
+                  type: 'file_path',
+                  text: '[file_path]',
+                  start_index: 15,
+                  end_index: 26,
+                  file_path: {
+                    file_id: 'assistant-attachment-123',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        created_at: 1,
+        assistant_id: 'asst_legacy',
+      },
+    ];
+
+    retrieveAndProcessFile.mockResolvedValue({
+      id: 'assistant-attachment-123',
+      file_id: 'file-underlying-123',
+      filename: 'tableau_3x3.xlsx',
+      filepath: '/path/to/tableau_3x3.xlsx',
+    });
+
+    const result = await processMessages({
+      openai: {},
+      client: {
+        processedFileIds: new Set(),
+        req: {
+          user: { id: 'test-user-id' },
+        },
+      },
+      messages,
+    });
+
+    expect(result.text).toBe('Download here: /api/files/download/test-user-id/file-underlying-123');
+    expect(result.edited).toBe(true);
+    expect(retrieveAndProcessFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assistant_id: 'asst_legacy',
+      }),
+    );
   });
 
   test('handles FILE_CITATION annotation type', async () => {
@@ -753,12 +869,17 @@ These points highlight Harry's initial experiences in the magical world and set 
 
     const result = await processMessages({
       openai: {},
-      client: { processedFileIds: new Set() },
+      client: {
+        processedFileIds: new Set(),
+        req: {
+          user: { id: 'test-user-id' },
+        },
+      },
       messages,
     });
 
     const expectedText =
-      'File path: /path/to/file1.txt. Citation: ^1^. Another citation: ^2^.\n\n^1.^ file2.txt\n^2.^ file3.txt';
+      'File path: /api/files/download/test-user-id/file-XXXXXXXXXXXXXXXX1. Citation: ^1^. Another citation: ^2^.\n\n^1.^ file2.txt\n^2.^ file3.txt';
 
     expect(result.text).toBe(expectedText);
     expect(result.edited).toBe(true);
@@ -947,6 +1068,9 @@ These points highlight Harry's initial experiences in the magical world and set 
 
     const mockClient = {
       processedFileIds: new Set(),
+      req: {
+        user: { id: 'XXXXXXXXXXXXXXXXXXXX' },
+      },
     };
 
     // Mock the retrieveAndProcessFile function for each file
@@ -975,7 +1099,7 @@ These points highlight Harry's initial experiences in the magical world and set 
     const result = await processMessages({ openai: {}, client: mockClient, messages });
 
     const expectedText =
-      'I have generated three dummy CSV files for you. You can download them using the links below:\n\n1. [Download Dummy Data 1](https://api.openai.com/v1/files/XXXXXXXXXXXXXXXXXXXX/file-XXXXXXXXXXXXXXXXXXXX/dummy_data1.csv)\n2. [Download Dummy Data 2](https://api.openai.com/v1/files/XXXXXXXXXXXXXXXXXXXX/file-YYYYYYYYYYYYYYYYYYYY/dummy_data2.csv)\n3. [Download Dummy Data 3](https://api.openai.com/v1/files/XXXXXXXXXXXXXXXXXXXX/file-ZZZZZZZZZZZZZZZZZZZZ/dummy_data3.csv)';
+      'I have generated three dummy CSV files for you. You can download them using the links below:\n\n1. [Download Dummy Data 1](/api/files/download/XXXXXXXXXXXXXXXXXXXX/file-XXXXXXXXXXXXXXXXXXXX)\n2. [Download Dummy Data 2](/api/files/download/XXXXXXXXXXXXXXXXXXXX/file-YYYYYYYYYYYYYYYYYYYY)\n3. [Download Dummy Data 3](/api/files/download/XXXXXXXXXXXXXXXXXXXX/file-ZZZZZZZZZZZZZZZZZZZZ)';
 
     expect(result.text).toBe(expectedText);
     expect(result.edited).toBe(true);

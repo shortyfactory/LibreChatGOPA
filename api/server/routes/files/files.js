@@ -15,6 +15,7 @@ const {
   FileSources,
   SystemRoles,
   EModelEndpoint,
+  AzureAssistantsOldEndpoint,
   ResourceType,
   PermissionBits,
   checkOpenAIStorage,
@@ -106,6 +107,31 @@ const tryFoundryFileDownload = async ({ file, file_id, res }) => {
       `[DOWNLOAD ROUTE] Foundry download failed for ${file_id}, falling back to legacy Azure route: ${error.message}`,
     );
     return false;
+  }
+};
+
+const resolveOpenAIStorageFile = async ({ openai, file_id, filename }) => {
+  if (typeof openai?.files?.retrieve !== 'function') {
+    return {
+      file_id,
+      filename,
+    };
+  }
+
+  try {
+    const retrievedFile = await openai.files.retrieve(file_id);
+    return {
+      file_id: retrievedFile?.file_id ?? file_id,
+      filename: retrievedFile?.filename ?? filename,
+    };
+  } catch (error) {
+    logger.warn(
+      `[DOWNLOAD ROUTE] Failed to resolve storage file for ${file_id}, using original identifier: ${error.message}`,
+    );
+    return {
+      file_id,
+      filename,
+    };
   }
 };
 
@@ -432,11 +458,6 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
     // Access already validated by fileAccess middleware
     const file = req.fileAccess.file;
 
-    if (checkOpenAIStorage(file.source) && !file.model) {
-      logger.warn(`File download requested by user ${userId} has no associated model: ${file_id}`);
-      return res.status(400).send('The model used when creating this file is not available');
-    }
-
     const { getDownloadStream } = getStrategyFunctions(file.source);
     if (!getDownloadStream) {
       logger.warn(
@@ -450,24 +471,30 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
     }
 
     if (checkOpenAIStorage(file.source)) {
-      req.body = { model: file.model };
+      req.body = file.model ? { ...req.body, model: file.model } : { ...req.body };
       const endpointMap = {
         [FileSources.openai]: EModelEndpoint.assistants,
-        [FileSources.azure]: EModelEndpoint.azureAssistants,
+        [FileSources.azure]: AzureAssistantsOldEndpoint,
       };
       const { openai } = await getOpenAIClient({
         req,
         res,
         overrideEndpoint: endpointMap[file.source],
       });
-      logger.debug(`Downloading file ${file_id} from OpenAI`);
-      const passThrough = await getDownloadStream(file_id, openai);
+      const resolvedStorageFile = await resolveOpenAIStorageFile({
+        openai,
+        file_id,
+        filename: file.filename,
+      });
+      logger.debug(`Downloading file ${resolvedStorageFile.file_id} from OpenAI`);
+      const passThrough = await getDownloadStream(resolvedStorageFile.file_id, openai);
       setDownloadHeaders({
         file,
         res,
+        filename: resolvedStorageFile.filename ?? file.filename,
         type: 'application/octet-stream',
       });
-      logger.debug(`File ${file_id} downloaded from OpenAI`);
+      logger.debug(`File ${resolvedStorageFile.file_id} downloaded from OpenAI`);
 
       // Handle both Node.js and Web streams
       const stream =

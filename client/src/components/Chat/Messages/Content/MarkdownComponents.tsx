@@ -96,27 +96,83 @@ type TAnchorProps = {
   children: React.ReactNode;
 };
 
+const getTextContent = (children: React.ReactNode): string => {
+  if (typeof children === 'string') {
+    return children;
+  }
+
+  if (typeof children === 'number') {
+    return String(children);
+  }
+
+  if (Array.isArray(children)) {
+    return children.map((child) => getTextContent(child)).join('');
+  }
+
+  return '';
+};
+
+const getAssistantDownloadLink = ({
+  href,
+  userId,
+  fallbackFilename,
+}: {
+  href: string;
+  userId?: string;
+  fallbackFilename: string;
+}) => {
+  if (!userId) {
+    return null;
+  }
+
+  const directRoutePattern = new RegExp(`/api/files/download/${userId}/([^/?#\\s]+)`);
+  const directRouteMatch = href.match(directRoutePattern);
+  if (directRouteMatch?.[1]) {
+    const file_id = decodeURIComponent(directRouteMatch[1]);
+    return {
+      file_id,
+      filename: fallbackFilename || file_id,
+      downloadHref: href.startsWith('http') ? href : `${apiBaseUrl()}${href}`,
+    };
+  }
+
+  const legacyPattern = new RegExp(`(?:files|outputs)/${userId}/([^\\s?#]+)`);
+  const legacyMatch = href.match(legacyPattern);
+  if (!legacyMatch?.[0]) {
+    return null;
+  }
+
+  const parts = legacyMatch[0].split('/');
+  const name = parts.pop();
+  const file_id = parts.pop();
+  if (!file_id) {
+    return null;
+  }
+
+  return {
+    file_id,
+    filename: name || fallbackFilename || file_id,
+    downloadHref: `${apiBaseUrl()}/api/files/download/${encodeURIComponent(userId)}/${encodeURIComponent(file_id)}`,
+  };
+};
+
 export const a: React.ElementType = memo(function MarkdownAnchor({ href, children }: TAnchorProps) {
   const user = useRecoilValue(store.user);
   const { showToast } = useToastContext();
   const localize = useLocalize();
 
-  const {
-    file_id = '',
-    filename = '',
-    filepath,
-  } = useMemo(() => {
-    const pattern = new RegExp(`(?:files|outputs)/${user?.id}/([^\\s]+)`);
-    const match = href.match(pattern);
-    if (match && match[0]) {
-      const path = match[0];
-      const parts = path.split('/');
-      const name = parts.pop();
-      const file_id = parts.pop();
-      return { file_id, filename: name, filepath: path };
-    }
-    return { file_id: '', filename: '', filepath: '' };
-  }, [user?.id, href]);
+  const assistantDownloadLink = useMemo(
+    () =>
+      getAssistantDownloadLink({
+        href,
+        userId: user?.id,
+        fallbackFilename: getTextContent(children),
+      }),
+    [children, href, user?.id],
+  );
+  const file_id = assistantDownloadLink?.file_id ?? '';
+  const filename = assistantDownloadLink?.filename ?? '';
+  const downloadHref = assistantDownloadLink?.downloadHref ?? href;
 
   const { refetch: downloadFile } = useFileDownload(user?.id ?? '', file_id);
   const props: { target?: string; onClick?: React.MouseEventHandler } = { target: '_blank' };
@@ -150,23 +206,18 @@ export const a: React.ElementType = memo(function MarkdownAnchor({ href, childre
       window.URL.revokeObjectURL(stream.data);
     } catch (error) {
       console.error('Error downloading file:', error);
+      showToast({
+        status: 'error',
+        message: localize('com_ui_download_error'),
+      });
     }
   };
 
   props.onClick = handleDownload;
-  props.target = '_blank';
-
-  const domainServerBaseUrl = `${apiBaseUrl()}/api`;
+  delete props.target;
 
   return (
-    <a
-      href={
-        filepath?.startsWith('files/')
-          ? `${domainServerBaseUrl}/${filepath}`
-          : `${domainServerBaseUrl}/files/${filepath}`
-      }
-      {...props}
-    >
+    <a href={downloadHref} {...props}>
       {children}
     </a>
   );

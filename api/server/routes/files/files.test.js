@@ -1,6 +1,7 @@
 const express = require('express');
 const request = require('supertest');
 const mongoose = require('mongoose');
+const { Readable } = require('stream');
 const { v4: uuidv4 } = require('uuid');
 const { createMethods } = require('@librechat/data-schemas');
 const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -8,6 +9,7 @@ const {
   SystemRoles,
   FileSources,
   EModelEndpoint,
+  AzureAssistantsOldEndpoint,
   ResourceType,
   AccessRoleIds,
   PrincipalType,
@@ -91,6 +93,8 @@ const {
   verifyAgentUploadPermission,
 } = require('@librechat/api');
 const fs = require('fs');
+const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
+const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { processDeleteRequest, processFileUpload } = require('~/server/services/Files/process');
 
 // Import the router after mocks
@@ -701,6 +705,57 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(response.body.equals(fileBuffer)).toBe(true);
       expect(getFoundryFileInfo).toHaveBeenCalledWith(foundryFileId);
       expect(getFoundryFileArrayBuffer).toHaveBeenCalledWith(foundryFileId);
+    });
+
+    it('should download Azure assistant files even when Foundry is enabled and the stored model is missing', async () => {
+      const azureFileId = 'assistant-legacy-file-id';
+      const fileBuffer = Buffer.from('legacy-excel-data');
+      const getDownloadStream = jest.fn().mockResolvedValue({
+        body: Readable.from(fileBuffer),
+      });
+
+      getStrategyFunctions.mockReturnValue({ getDownloadStream });
+      getOpenAIClient.mockResolvedValue({
+        openai: {
+          files: {
+            retrieve: jest.fn().mockResolvedValue({
+              file_id: 'file-underlying-legacy-id',
+              filename: 'tableau_3x3.xlsx',
+            }),
+          },
+        },
+      });
+      isFoundryAgentsConfigured.mockReturnValue(true);
+      getFoundryFileInfo.mockRejectedValue(new Error('Not found in Foundry'));
+
+      await createFile({
+        user: otherUserId,
+        file_id: azureFileId,
+        filename: 'tableau_3x3.xlsx',
+        filepath: `/files/${otherUserId.toString()}/${azureFileId}/tableau_3x3.xlsx`,
+        bytes: fileBuffer.length,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        source: FileSources.azure,
+      });
+
+      const response = await request(app)
+        .get(`/files/download/${otherUserId.toString()}/${azureFileId}`)
+        .buffer(true)
+        .parse(parseBinaryResponse);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-disposition']).toContain('tableau_3x3.xlsx');
+      expect(response.body.equals(fileBuffer)).toBe(true);
+      expect(getFoundryFileInfo).toHaveBeenCalledWith(azureFileId);
+      expect(getOpenAIClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrideEndpoint: AzureAssistantsOldEndpoint,
+        }),
+      );
+      expect(getDownloadStream).toHaveBeenCalledWith(
+        'file-underlying-legacy-id',
+        expect.any(Object),
+      );
     });
   });
 });

@@ -239,6 +239,14 @@ function addMessageFile(message, file, fallbackFileId) {
   }
 }
 
+function getAssistantDownloadPath({ userId, file_id, filepath = '' }) {
+  if (!userId || !file_id) {
+    return filepath;
+  }
+
+  return `/api/files/download/${encodeURIComponent(userId)}/${encodeURIComponent(file_id)}`;
+}
+
 function replaceFileReferenceIds(currentText, fileNamesById) {
   if (!currentText || fileNamesById.size === 0) {
     return currentText;
@@ -606,6 +614,7 @@ async function processMessages({ openai, client, messages = [] }) {
             client,
             file_id: currentFileId,
             basename: `${currentFileId}.png`,
+            assistant_id: message.assistant_id,
           })
             .then((file) => {
               client.processedFileIds.add(currentFileId);
@@ -645,7 +654,20 @@ async function processMessages({ openai, client, messages = [] }) {
 
         try {
           if (alreadyProcessed) {
-            file = await retrieveAndProcessFile({ openai, client, file_id, unknownType: true });
+            file = await retrieveAndProcessFile({
+              openai,
+              client,
+              file_id,
+              unknownType: true,
+              assistant_id: message.assistant_id,
+            });
+            if (type === AnnotationTypes.FILE_PATH) {
+              replacementText = getAssistantDownloadPath({
+                userId: client.req?.user?.id,
+                file_id: file?.file_id ?? file_id,
+                filepath: file?.filepath,
+              });
+            }
           } else if (type === AnnotationTypes.FILE_PATH) {
             const basename = path.basename(annotation.text);
             file = await retrieveAndProcessFile({
@@ -653,14 +675,20 @@ async function processMessages({ openai, client, messages = [] }) {
               client,
               file_id,
               basename,
+              assistant_id: message.assistant_id,
             });
-            replacementText = file.filepath;
+            replacementText = getAssistantDownloadPath({
+              userId: client.req?.user?.id,
+              file_id: file?.file_id ?? file_id,
+              filepath: file?.filepath,
+            });
           } else if (type === AnnotationTypes.FILE_CITATION && file_id) {
             file = await retrieveAndProcessFile({
               openai,
               client,
               file_id,
               unknownType: true,
+              assistant_id: message.assistant_id,
             });
             if (file && file.filename) {
               if (!sources.has(file.filename)) {

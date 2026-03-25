@@ -85,12 +85,12 @@ const {
   FileContext,
 } = require('librechat-data-provider');
 const { mergeFileConfig } = require('librechat-data-provider');
-const { createFile } = require('~/models');
+const { createFile, updateFileUsage } = require('~/models');
 const { checkCapability } = require('~/server/services/Config');
 const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { recordSidebarFileUpload } = require('~/server/services/FileRetentionStore');
-const { processAgentFileUpload, processFileUpload } = require('./process');
+const { processAgentFileUpload, processFileUpload, retrieveAndProcessFile } = require('./process');
 
 const PDF_MIME = 'application/pdf';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -483,5 +483,164 @@ describe('processAgentFileUpload', () => {
         uploadedAt: createdAt,
       });
     });
+  });
+});
+
+describe('retrieveAndProcessFile', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('creates a file record when usage update finds no existing assistant file', async () => {
+    updateFileUsage.mockResolvedValue(null);
+
+    const openai = {
+      baseURL: 'https://azure.example.com/openai',
+      req: {
+        body: {
+          endpoint: EModelEndpoint.azureAssistants,
+          model: 'gpt-4.1',
+        },
+      },
+      files: {
+        retrieve: jest.fn().mockResolvedValue({
+          filename: 'tableau_3x3.xlsx',
+          purpose: FileContext.assistants,
+        }),
+      },
+    };
+
+    const client = {
+      req: {
+        user: { id: 'user-123' },
+      },
+      processedFileIds: new Set(['assistant-file-123']),
+    };
+
+    const result = await retrieveAndProcessFile({
+      openai,
+      client,
+      file_id: 'assistant-file-123',
+      basename: 'tableau_3x3.xlsx',
+    });
+
+    expect(updateFileUsage).toHaveBeenCalledWith({ file_id: 'assistant-file-123' });
+    expect(createFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file_id: 'assistant-file-123',
+        user: 'user-123',
+        source: FileSources.azure,
+        model: 'gpt-4.1',
+        filename: 'tableau_3x3.xlsx',
+      }),
+      true,
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        file_id: 'assistant-file-123',
+        filename: 'tableau_3x3.xlsx',
+      }),
+    );
+  });
+
+  test('does not recreate a file record when usage update succeeds', async () => {
+    updateFileUsage.mockResolvedValue({ file_id: 'assistant-file-123', usage: 2 });
+
+    const openai = {
+      baseURL: 'https://azure.example.com/openai',
+      req: {
+        body: {
+          endpoint: EModelEndpoint.azureAssistants,
+          model: 'gpt-4.1',
+        },
+      },
+      files: {
+        retrieve: jest.fn().mockResolvedValue({
+          filename: 'tableau_3x3.xlsx',
+          purpose: FileContext.assistants,
+        }),
+      },
+    };
+
+    const client = {
+      req: {
+        user: { id: 'user-123' },
+      },
+      attachedFileIds: new Set(['assistant-file-123']),
+    };
+
+    await retrieveAndProcessFile({
+      openai,
+      client,
+      file_id: 'assistant-file-123',
+      basename: 'tableau_3x3.xlsx',
+    });
+
+    expect(updateFileUsage).toHaveBeenCalledWith({ file_id: 'assistant-file-123' });
+    expect(createFile).not.toHaveBeenCalled();
+  });
+
+  test('preserves assistant attachment ids while saving the resolved underlying file_id', async () => {
+    const openai = {
+      baseURL: 'https://azure.example.com/openai',
+      req: {
+        body: {
+          endpoint: EModelEndpoint.azureAssistants,
+          model: 'gpt-4.1',
+        },
+      },
+      beta: {
+        assistants: {
+          files: {
+            retrieve: jest.fn().mockResolvedValue({
+              id: 'assistant-attachment-123',
+              file_id: 'file-underlying-123',
+            }),
+          },
+        },
+      },
+      files: {
+        retrieve: jest.fn().mockResolvedValue({
+          id: 'file-underlying-123',
+          filename: 'tableau_3x3.xlsx',
+          purpose: FileContext.assistants,
+        }),
+      },
+    };
+
+    const client = {
+      req: {
+        user: { id: 'user-123' },
+      },
+    };
+
+    const result = await retrieveAndProcessFile({
+      openai,
+      client,
+      file_id: 'assistant-attachment-123',
+      basename: 'tableau_3x3.xlsx',
+      assistant_id: 'asst_legacy',
+    });
+
+    expect(createFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'assistant-attachment-123',
+        file_id: 'file-underlying-123',
+        filepath:
+          'https://azure.example.com/openai/files/user-123/file-underlying-123/tableau_3x3.xlsx',
+      }),
+      true,
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'assistant-attachment-123',
+        file_id: 'file-underlying-123',
+      }),
+    );
+    expect(openai.beta.assistants.files.retrieve).toHaveBeenCalledWith(
+      'asst_legacy',
+      'assistant-attachment-123',
+    );
+    expect(openai.files.retrieve).toHaveBeenCalledWith('file-underlying-123');
   });
 });

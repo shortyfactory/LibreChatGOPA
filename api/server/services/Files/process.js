@@ -766,37 +766,61 @@ const processOpenAIFile = async ({
   file_id,
   userId,
   filename,
+  assistant_id,
   saveFile = false,
   updateUsage = false,
 }) => {
-  const _file = await openai.files.retrieve(file_id);
+  let assistantFile = null;
+  if (
+    assistant_id &&
+    /^assistant-/i.test(file_id) &&
+    typeof openai?.beta?.assistants?.files?.retrieve === 'function'
+  ) {
+    try {
+      assistantFile = await openai.beta.assistants.files.retrieve(assistant_id, file_id);
+    } catch (error) {
+      logger.warn('[processOpenAIFile] Failed to resolve assistant file mapping', {
+        assistant_id,
+        file_id,
+        error: error?.message ?? String(error),
+      });
+    }
+  }
+
+  const resolvedFileId = assistantFile?.file_id ?? file_id;
+  const _file = await openai.files.retrieve(resolvedFileId);
+  const referenceId = assistantFile?.id ?? _file.id ?? file_id;
   const originalName = filename ?? (_file.filename ? path.basename(_file.filename) : undefined);
-  const filepath = `${openai.baseURL}/files/${userId}/${file_id}${
+  const filepath = `${openai.baseURL}/files/${userId}/${resolvedFileId}${
     originalName ? `/${originalName}` : ''
   }`;
-  const type = mime.getType(originalName ?? file_id);
+  const type = mime.getType(originalName ?? resolvedFileId);
   const source =
     openai.req.body.endpoint === EModelEndpoint.azureAssistants
       ? FileSources.azure
       : FileSources.openai;
   const file = {
     ..._file,
+    id: referenceId,
     type,
-    file_id,
+    file_id: resolvedFileId,
     filepath,
     usage: 1,
     user: userId,
     context: _file.purpose,
     source,
     model: openai.req.body.model,
-    filename: originalName ?? file_id,
+    filename: originalName ?? resolvedFileId,
   };
 
   if (saveFile) {
     await createFile(file, true);
   } else if (updateUsage) {
     try {
-      await updateFileUsage({ file_id });
+      const updatedFile = await updateFileUsage({ file_id: resolvedFileId });
+      if (!updatedFile) {
+        await createFile(file, true);
+      }
     } catch (error) {
       logger.error('Error updating file usage', error);
     }
@@ -856,13 +880,20 @@ async function retrieveAndProcessFile({
   file_id,
   basename: _basename,
   unknownType,
+  assistant_id,
 }) {
   if (!file_id) {
     return null;
   }
 
   let basename = _basename;
-  const processArgs = { openai, file_id, filename: basename, userId: client.req.user.id };
+  const processArgs = {
+    openai,
+    file_id,
+    filename: basename,
+    userId: client.req.user.id,
+    assistant_id,
+  };
 
   // If no basename provided, return only the file metadata
   if (!basename) {
