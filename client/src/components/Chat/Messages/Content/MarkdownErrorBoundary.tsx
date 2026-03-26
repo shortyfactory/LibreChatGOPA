@@ -6,7 +6,7 @@ import rehypeHighlight from 'rehype-highlight';
 import type { PluggableList } from 'unified';
 import { code, codeNoExecution, a, p } from './MarkdownComponents';
 import { CodeBlockProvider } from '~/Providers';
-import { langSubset } from '~/utils';
+import { langSubset, normalizeAssistantDownloadMarkdown } from '~/utils';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -45,6 +45,7 @@ class MarkdownErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       const { content, codeExecution = true } = this.props;
+      const normalizedContent = normalizeAssistantDownloadMarkdown(content);
 
       const rehypePlugins: PluggableList = [
         [
@@ -77,7 +78,7 @@ class MarkdownErrorBoundary extends React.Component<
               }
             }
           >
-            {content}
+            {normalizedContent}
           </ReactMarkdown>
         </CodeBlockProvider>
       );

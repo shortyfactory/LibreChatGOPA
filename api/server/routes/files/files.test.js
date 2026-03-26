@@ -685,6 +685,7 @@ describe('File Routes - Delete with Agent Access', () => {
 
       isFoundryAgentsConfigured.mockReturnValue(true);
       getFoundryFileInfo.mockResolvedValue({
+        id: 'file-foundry-underlying-id',
         filename: 'tableau_3x4.xlsx',
       });
       getFoundryFileArrayBuffer.mockResolvedValue(
@@ -704,7 +705,47 @@ describe('File Routes - Delete with Agent Access', () => {
       expect(response.headers['x-file-metadata']).toBeDefined();
       expect(response.body.equals(fileBuffer)).toBe(true);
       expect(getFoundryFileInfo).toHaveBeenCalledWith(foundryFileId);
-      expect(getFoundryFileArrayBuffer).toHaveBeenCalledWith(foundryFileId);
+      expect(getFoundryFileArrayBuffer).toHaveBeenCalledWith('file-foundry-underlying-id');
+    });
+
+    it('should recover Foundry downloads for assistant files that were incorrectly stored as openai files', async () => {
+      const foundryFileId = 'assistant-foundry-file-id';
+      const fileBuffer = Buffer.from('excel-data');
+
+      await createFile({
+        user: otherUserId,
+        file_id: foundryFileId,
+        filename: 'tableau_3x4.xlsx',
+        filepath: `https://foundry.example.com/openai/files/${otherUserId.toString()}/${foundryFileId}/tableau_3x4.xlsx`,
+        bytes: fileBuffer.length,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        source: FileSources.openai,
+        model: 'gpt-5',
+      });
+
+      isFoundryAgentsConfigured.mockReturnValue(true);
+      getFoundryFileInfo.mockResolvedValue({
+        id: 'file-foundry-underlying-id',
+        filename: 'tableau_3x4.xlsx',
+      });
+      getFoundryFileArrayBuffer.mockResolvedValue(
+        fileBuffer.buffer.slice(
+          fileBuffer.byteOffset,
+          fileBuffer.byteOffset + fileBuffer.byteLength,
+        ),
+      );
+
+      const response = await request(app)
+        .get(`/files/download/${otherUserId.toString()}/${foundryFileId}`)
+        .buffer(true)
+        .parse(parseBinaryResponse);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-disposition']).toContain('tableau_3x4.xlsx');
+      expect(response.body.equals(fileBuffer)).toBe(true);
+      expect(getFoundryFileInfo).toHaveBeenCalledWith(foundryFileId);
+      expect(getFoundryFileArrayBuffer).toHaveBeenCalledWith('file-foundry-underlying-id');
+      expect(getOpenAIClient).not.toHaveBeenCalled();
     });
 
     it('should download Azure assistant files even when Foundry is enabled and the stored model is missing', async () => {
@@ -752,6 +793,99 @@ describe('File Routes - Delete with Agent Access', () => {
           overrideEndpoint: AzureAssistantsOldEndpoint,
         }),
       );
+      expect(getDownloadStream).toHaveBeenCalledWith(
+        'file-underlying-legacy-id',
+        expect.any(Object),
+      );
+    });
+
+    it('should recover Azure assistant downloads for assistant files that were incorrectly stored as openai files', async () => {
+      const azureFileId = 'assistant-legacy-file-id';
+      const fileBuffer = Buffer.from('legacy-excel-data');
+      const getDownloadStream = jest.fn().mockResolvedValue({
+        body: Readable.from(fileBuffer),
+      });
+
+      getStrategyFunctions.mockReturnValue({ getDownloadStream });
+      getOpenAIClient.mockResolvedValue({
+        openai: {
+          files: {
+            retrieve: jest.fn().mockResolvedValue({
+              file_id: 'file-underlying-legacy-id',
+              filename: 'tableau_3x3.xlsx',
+            }),
+          },
+        },
+      });
+      isFoundryAgentsConfigured.mockReturnValue(false);
+
+      await createFile({
+        user: otherUserId,
+        file_id: azureFileId,
+        filename: 'tableau_3x3.xlsx',
+        filepath: `https://azure.example.com/openai/files/${otherUserId.toString()}/${azureFileId}/tableau_3x3.xlsx`,
+        bytes: fileBuffer.length,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        source: FileSources.openai,
+      });
+
+      const response = await request(app)
+        .get(`/files/download/${otherUserId.toString()}/${azureFileId}`)
+        .buffer(true)
+        .parse(parseBinaryResponse);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-disposition']).toContain('tableau_3x3.xlsx');
+      expect(response.body.equals(fileBuffer)).toBe(true);
+      expect(getOpenAIClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrideEndpoint: AzureAssistantsOldEndpoint,
+        }),
+      );
+      expect(getDownloadStream).toHaveBeenCalledWith(
+        'file-underlying-legacy-id',
+        expect.any(Object),
+      );
+    });
+
+    it('should resolve Azure assistant downloads from retrieved file ids even when files.retrieve only returns id', async () => {
+      const azureFileId = 'assistant-legacy-file-id';
+      const fileBuffer = Buffer.from('legacy-excel-data');
+      const getDownloadStream = jest.fn().mockResolvedValue({
+        body: Readable.from(fileBuffer),
+      });
+
+      getStrategyFunctions.mockReturnValue({ getDownloadStream });
+      getOpenAIClient.mockResolvedValue({
+        openai: {
+          files: {
+            retrieve: jest.fn().mockResolvedValue({
+              id: 'file-underlying-legacy-id',
+              filename: 'tableau_3x3.xlsx',
+            }),
+          },
+        },
+      });
+      isFoundryAgentsConfigured.mockReturnValue(false);
+
+      await createFile({
+        user: otherUserId,
+        file_id: azureFileId,
+        filename: 'tableau_3x3.xlsx',
+        filepath: `/files/${otherUserId.toString()}/${azureFileId}/tableau_3x3.xlsx`,
+        bytes: fileBuffer.length,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        source: FileSources.azure,
+      });
+
+      const response = await request(app)
+        .get(`/files/download/${otherUserId.toString()}/${azureFileId}`)
+        .buffer(true)
+        .parse(parseBinaryResponse);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-disposition']).toContain('tableau_3x3.xlsx');
+      expect(response.body.equals(fileBuffer)).toBe(true);
       expect(getDownloadStream).toHaveBeenCalledWith(
         'file-underlying-legacy-id',
         expect.any(Object),

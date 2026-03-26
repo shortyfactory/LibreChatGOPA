@@ -55,6 +55,8 @@ jest.mock('~/hooks/Roles/useHasAccess', () => ({
 }));
 
 jest.mock('~/Providers', () => ({
+  ArtifactProvider: ({ children }: React.PropsWithChildren) => <>{children}</>,
+  CodeBlockProvider: ({ children }: React.PropsWithChildren) => <>{children}</>,
   useCodeBlockContext: () => ({
     getNextIndex: () => 0,
     resetCounter: () => undefined,
@@ -62,6 +64,7 @@ jest.mock('~/Providers', () => ({
 }));
 
 jest.mock('~/utils', () => ({
+  ...jest.requireActual('~/utils'),
   handleDoubleClick: jest.fn(),
 }));
 
@@ -83,6 +86,7 @@ jest.mock('~/store', () => ({
 }));
 
 import { a as MarkdownAnchor } from '../MarkdownComponents';
+import MarkdownLite from '../MarkdownLite';
 
 describe('MarkdownComponents anchor', () => {
   const generatedFileLabel = 'tableau_3x3.xlsx';
@@ -137,5 +141,17 @@ describe('MarkdownComponents anchor', () => {
 
     expect(link).toHaveAttribute('href', 'https://example.com');
     expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('repairs malformed assistant download markdown links before rendering', () => {
+    render(
+      <MarkdownLite content="👉 [Reporting_GOPA_GBE_AVEC_CHARTS.xlsx]/api/files/download/user-123/assistant-file-123)" />,
+    );
+
+    const link = screen.getByRole('link', {
+      name: 'Reporting_GOPA_GBE_AVEC_CHARTS.xlsx',
+    });
+
+    expect(link).toHaveAttribute('href', '/api/files/download/user-123/assistant-file-123');
   });
 });

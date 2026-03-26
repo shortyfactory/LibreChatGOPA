@@ -83,6 +83,8 @@ const {
   AgentCapabilities,
   EModelEndpoint,
   FileContext,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
 } = require('librechat-data-provider');
 const { mergeFileConfig } = require('librechat-data-provider');
 const { createFile, updateFileUsage } = require('~/models');
@@ -446,6 +448,62 @@ describe('processAgentFileUpload', () => {
       expect(recordSidebarFileUpload).not.toHaveBeenCalled();
     });
 
+    test.each([AzureAssistantsOldEndpoint, AzureAssistantsNewEndpoint])(
+      'stores assistant uploads from %s as Azure files',
+      async (endpoint) => {
+        createFile.mockImplementation(async (input) => ({
+          ...input,
+          createdAt: new Date('2026-03-18T11:00:00.000Z'),
+          retentionEligible: input.retentionEligible ?? false,
+        }));
+        getOpenAIClient.mockResolvedValue({
+          openai: {
+            baseURL: 'https://azure.example.com/openai',
+            req: {
+              body: {
+                endpoint,
+              },
+            },
+            beta: {
+              assistants: {
+                files: {
+                  create: jest.fn().mockResolvedValue({}),
+                },
+              },
+            },
+          },
+        });
+        getStrategyFunctions.mockReturnValue({
+          handleFileUpload: jest.fn().mockResolvedValue({
+            id: 'assistant-file-id',
+            bytes: 42,
+            filename: 'assistant.txt',
+            filepath: '/uploads/assistant.txt',
+          }),
+        });
+        const req = makeReq({ mimetype: 'text/plain', ocrConfig: null });
+
+        await processFileUpload({
+          req,
+          res: mockRes,
+          metadata: {
+            endpoint,
+            assistant_id: 'asst_123',
+            tool_resource: EToolResources.context,
+            file_id: 'file-uuid-123',
+          },
+        });
+
+        expect(createFile).toHaveBeenCalledWith(
+          expect.objectContaining({
+            source: FileSources.azure,
+            context: FileContext.assistants,
+          }),
+          true,
+        );
+      },
+    );
+
     test('records sidebar analytics for agent message attachments only', async () => {
       const createdAt = new Date('2026-03-18T12:00:00.000Z');
       createFile.mockImplementation(async (input) => ({
@@ -642,5 +700,54 @@ describe('retrieveAndProcessFile', () => {
       'assistant-attachment-123',
     );
     expect(openai.files.retrieve).toHaveBeenCalledWith('file-underlying-123');
+  });
+
+  test('uses the retrieved file id as the storage file_id when an assistant alias resolves directly via files.retrieve', async () => {
+    const openai = {
+      baseURL: 'https://foundry.example.com/openai',
+      req: {
+        body: {
+          endpoint: EModelEndpoint.azureAssistants,
+          model: 'gpt-4.1',
+        },
+      },
+      files: {
+        retrieve: jest.fn().mockResolvedValue({
+          id: 'file-underlying-456',
+          filename: 'tableau_3x3.xlsx',
+          purpose: FileContext.assistants,
+        }),
+      },
+    };
+
+    const client = {
+      req: {
+        user: { id: 'user-456' },
+      },
+    };
+
+    const result = await retrieveAndProcessFile({
+      openai,
+      client,
+      file_id: 'assistant-attachment-456',
+      basename: 'tableau_3x3.xlsx',
+    });
+
+    expect(createFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'assistant-attachment-456',
+        file_id: 'file-underlying-456',
+        filepath:
+          'https://foundry.example.com/openai/files/user-456/file-underlying-456/tableau_3x3.xlsx',
+      }),
+      true,
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'assistant-attachment-456',
+        file_id: 'file-underlying-456',
+      }),
+    );
+    expect(openai.files.retrieve).toHaveBeenCalledWith('assistant-attachment-456');
   });
 });

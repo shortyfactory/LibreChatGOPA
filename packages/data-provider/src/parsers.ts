@@ -10,10 +10,13 @@ import {
   EModelEndpoint,
   anthropicSchema,
   assistantSchema,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
   // agentsSchema,
   compactAgentsSchema,
   compactGoogleSchema,
   compactAssistantSchema,
+  resolveAssistantsConfigEndpoint,
 } from './schemas';
 import { bedrockInputSchema } from './bedrock';
 import { alternateName } from './config';
@@ -152,15 +155,25 @@ export const parseConvo = ({
   possibleValues?: TPossibleValues;
   defaultParamsEndpoint?: string | null;
 }) => {
-  let schema = endpointSchemas[endpoint] as EndpointSchema | undefined;
+  const normalizedEndpoint = resolveAssistantsConfigEndpoint(endpoint) as EndpointSchemaKey;
+  const normalizedEndpointType = endpointType
+    ? (resolveAssistantsConfigEndpoint(endpointType) as EndpointSchemaKey)
+    : undefined;
+  const normalizedDefaultParamsEndpoint = defaultParamsEndpoint
+    ? (resolveAssistantsConfigEndpoint(defaultParamsEndpoint) as EndpointSchemaKey)
+    : undefined;
 
-  if (!schema && !endpointType) {
+  let schema = endpointSchemas[normalizedEndpoint] as EndpointSchema | undefined;
+
+  if (!schema && !normalizedEndpointType) {
     throw new Error(`Unknown endpoint: ${endpoint}`);
   } else if (!schema) {
-    const overrideSchema = defaultParamsEndpoint
-      ? endpointSchemas[defaultParamsEndpoint as EndpointSchemaKey]
+    const overrideSchema = normalizedDefaultParamsEndpoint
+      ? endpointSchemas[normalizedDefaultParamsEndpoint]
       : undefined;
-    schema = overrideSchema ?? (endpointType ? endpointSchemas[endpointType] : undefined);
+    schema =
+      overrideSchema ??
+      (normalizedEndpointType ? endpointSchemas[normalizedEndpointType] : undefined);
   }
 
   const convo = schema?.parse(conversation) as s.TConversation | undefined;
@@ -321,15 +334,25 @@ export const parseCompactConvo = ({
     throw new Error(`undefined endpoint: ${endpoint}`);
   }
 
-  let schema = compactEndpointSchemas[endpoint] as CompactEndpointSchema | undefined;
+  const normalizedEndpoint = resolveAssistantsConfigEndpoint(endpoint) as EndpointSchemaKey;
+  const normalizedEndpointType = endpointType
+    ? (resolveAssistantsConfigEndpoint(endpointType) as EndpointSchemaKey)
+    : undefined;
+  const normalizedDefaultParamsEndpoint = defaultParamsEndpoint
+    ? (resolveAssistantsConfigEndpoint(defaultParamsEndpoint) as EndpointSchemaKey)
+    : undefined;
 
-  if (!schema && !endpointType) {
+  let schema = compactEndpointSchemas[normalizedEndpoint] as CompactEndpointSchema | undefined;
+
+  if (!schema && !normalizedEndpointType) {
     throw new Error(`Unknown endpoint: ${endpoint}`);
   } else if (!schema) {
-    const overrideSchema = defaultParamsEndpoint
-      ? compactEndpointSchemas[defaultParamsEndpoint as EndpointSchemaKey]
+    const overrideSchema = normalizedDefaultParamsEndpoint
+      ? compactEndpointSchemas[normalizedDefaultParamsEndpoint]
       : undefined;
-    schema = overrideSchema ?? (endpointType ? compactEndpointSchemas[endpointType] : undefined);
+    schema =
+      overrideSchema ??
+      (normalizedEndpointType ? compactEndpointSchemas[normalizedEndpointType] : undefined);
   }
 
   if (!schema) {

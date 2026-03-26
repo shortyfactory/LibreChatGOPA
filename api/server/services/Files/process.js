@@ -15,6 +15,7 @@ const {
   checkOpenAIStorage,
   removeNullishValues,
   isAssistantsEndpoint,
+  isAzureAssistantsEndpoint,
   getEndpointFileConfig,
   documentParserMimeTypes,
 } = require('librechat-data-provider');
@@ -75,6 +76,13 @@ const trackSidebarUpload = async ({ req, file }) => {
   } catch (error) {
     logger.warn('[processFiles] Failed to update historical upload count', error);
   }
+};
+
+const resolveAssistantStorageSource = ({ endpoint, openai }) => {
+  const requestEndpoint = endpoint ?? openai?.req?.body?.endpoint ?? openai?.req?.query?.endpoint;
+  return isAzureAssistantsEndpoint(requestEndpoint) || Boolean(openai?.locals?.azureOptions)
+    ? FileSources.azure
+    : FileSources.openai;
 };
 
 /**
@@ -401,8 +409,9 @@ const processFileUpload = async ({ req, res, metadata }) => {
   const isAssistantUpload = isAssistantsEndpoint(metadata.endpoint);
   const isMessageFile = metadata.message_file === true || metadata.message_file === 'true';
   const retentionEligible = !isAssistantUpload || isMessageFile;
-  const assistantSource =
-    metadata.endpoint === EModelEndpoint.azureAssistants ? FileSources.azure : FileSources.openai;
+  const assistantSource = resolveAssistantStorageSource({
+    endpoint: metadata.endpoint,
+  });
   // Use the configured file strategy for regular file uploads (not vectordb)
   const source = isAssistantUpload ? assistantSource : appConfig.fileStrategy;
   const { handleFileUpload } = getStrategyFunctions(source);
@@ -787,18 +796,17 @@ const processOpenAIFile = async ({
     }
   }
 
-  const resolvedFileId = assistantFile?.file_id ?? file_id;
-  const _file = await openai.files.retrieve(resolvedFileId);
-  const referenceId = assistantFile?.id ?? _file.id ?? file_id;
+  const initialResolvedFileId = assistantFile?.file_id ?? file_id;
+  const _file = await openai.files.retrieve(initialResolvedFileId);
+  const resolvedFileId = assistantFile?.file_id ?? _file?.file_id ?? _file?.id ?? file_id;
+  const referenceId =
+    assistantFile?.id ?? (resolvedFileId !== file_id ? file_id : (_file.id ?? file_id));
   const originalName = filename ?? (_file.filename ? path.basename(_file.filename) : undefined);
   const filepath = `${openai.baseURL}/files/${userId}/${resolvedFileId}${
     originalName ? `/${originalName}` : ''
   }`;
   const type = mime.getType(originalName ?? resolvedFileId);
-  const source =
-    openai.req.body.endpoint === EModelEndpoint.azureAssistants
-      ? FileSources.azure
-      : FileSources.openai;
+  const source = resolveAssistantStorageSource({ openai });
   const file = {
     ..._file,
     id: referenceId,

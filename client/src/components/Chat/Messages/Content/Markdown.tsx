@@ -17,7 +17,7 @@ import {
 import { Artifact, artifactPlugin } from '~/components/Artifacts/Artifact';
 import { ArtifactProvider, CodeBlockProvider } from '~/Providers';
 import MarkdownErrorBoundary from './MarkdownErrorBoundary';
-import { langSubset, preprocessLaTeX } from '~/utils';
+import { langSubset, normalizeAssistantDownloadMarkdown, preprocessLaTeX } from '~/utils';
 import { unicodeCitation } from '~/components/Web';
 import { code, a, p, img } from './MarkdownComponents';
 import store from '~/store';
@@ -35,7 +35,8 @@ const Markdown = memo(function Markdown({ content = '', isLatestMessage }: TCont
     if (isInitializing) {
       return '';
     }
-    return LaTeXParsing ? preprocessLaTeX(content) : content;
+    const nextContent = LaTeXParsing ? preprocessLaTeX(content) : content;
+    return normalizeAssistantDownloadMarkdown(nextContent);
   }, [content, LaTeXParsing, isInitializing]);
 
   const rehypePlugins = useMemo(

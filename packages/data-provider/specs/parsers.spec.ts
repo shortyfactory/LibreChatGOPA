@@ -1,6 +1,10 @@
 import { replaceSpecialVars, parseConvo, parseCompactConvo, parseTextParts } from '../src/parsers';
 import { specialVariables } from '../src/config';
-import { EModelEndpoint } from '../src/schemas';
+import {
+  EModelEndpoint,
+  AzureAssistantsNewEndpoint,
+  AzureAssistantsOldEndpoint,
+} from '../src/schemas';
 import { ContentTypes } from '../src/types/runs';
 import type { TMessageContentParts } from '../src/types/assistants';
 import type { TUser, TConversation } from '../src/types';
@@ -129,6 +133,42 @@ describe('replaceSpecialVars', () => {
 });
 
 describe('parseCompactConvo', () => {
+  describe('Azure Assistants alias compatibility', () => {
+    test('should parse Azure Assistants New conversations without endpointType', () => {
+      const conversation: Partial<TConversation> = {
+        assistant_id: 'asst_new',
+        model: 'gpt-4.1',
+        endpoint: AzureAssistantsNewEndpoint,
+      };
+
+      const result = parseCompactConvo({
+        endpoint: AzureAssistantsNewEndpoint as EModelEndpoint,
+        conversation,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.assistant_id).toBe('asst_new');
+      expect(result?.model).toBe('gpt-4.1');
+    });
+
+    test('should parse Azure Assistants Old conversations without endpointType', () => {
+      const conversation: Partial<TConversation> = {
+        assistant_id: 'asst_old',
+        model: 'gpt-4.1',
+        endpoint: AzureAssistantsOldEndpoint,
+      };
+
+      const result = parseCompactConvo({
+        endpoint: AzureAssistantsOldEndpoint as EModelEndpoint,
+        conversation,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.assistant_id).toBe('asst_old');
+      expect(result?.model).toBe('gpt-4.1');
+    });
+  });
+
   describe('iconURL security sanitization', () => {
     test('should strip iconURL from OpenAI endpoint conversation input', () => {
       const maliciousIconURL = 'https://evil-tracker.example.com/pixel.png?user=victim';
@@ -264,6 +304,23 @@ describe('parseCompactConvo', () => {
 });
 
 describe('parseConvo - defaultParamsEndpoint', () => {
+  test('should parse Azure Assistants New conversations without endpointType', () => {
+    const conversation: Partial<TConversation> = {
+      assistant_id: 'asst_new',
+      model: 'gpt-4.1',
+      endpoint: AzureAssistantsNewEndpoint,
+    };
+
+    const result = parseConvo({
+      endpoint: AzureAssistantsNewEndpoint as EModelEndpoint,
+      conversation,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.assistant_id).toBe('asst_new');
+    expect(result?.model).toBe('gpt-4.1');
+  });
+
   test('should strip maxOutputTokens for custom endpoint without defaultParamsEndpoint', () => {
     const conversation: Partial<TConversation> = {
       model: 'anthropic/claude-opus-4.5',

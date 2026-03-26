@@ -9,10 +9,11 @@ import type { PluggableList } from 'unified';
 import { code, codeNoExecution, a, p, img } from './MarkdownComponents';
 import { CodeBlockProvider, ArtifactProvider } from '~/Providers';
 import MarkdownErrorBoundary from './MarkdownErrorBoundary';
-import { langSubset } from '~/utils';
+import { langSubset, normalizeAssistantDownloadMarkdown } from '~/utils';
 
 const MarkdownLite = memo(
   ({ content = '', codeExecution = true }: { content?: string; codeExecution?: boolean }) => {
+    const normalizedContent = normalizeAssistantDownloadMarkdown(content);
     const rehypePlugins: PluggableList = [
       [rehypeKatex],
       [
@@ -49,7 +50,7 @@ const MarkdownLite = memo(
                 }
               }
             >
-              {content}
+              {normalizedContent}
             </ReactMarkdown>
           </CodeBlockProvider>
         </ArtifactProvider>

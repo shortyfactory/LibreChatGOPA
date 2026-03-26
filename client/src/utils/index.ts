@@ -7,6 +7,7 @@ export * from './errors';
 export * from './map';
 export * from './json';
 export * from './files';
+export * from './markdown';
 export * from './latex';
 export * from './forms';
 export * from './agents';

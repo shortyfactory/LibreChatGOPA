@@ -1,6 +1,8 @@
 import dedent from 'dedent';
 
 const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+const malformedAssistantDownloadLinkRegex =
+  /\[([^[\]\n]+)\](?!\()([ \t]*)(https?:\/\/[^\s)]+\/api\/files\/download\/[^\s)]+|\/api\/files\/download\/[^\s)]+)\)?/g;
 
 /**
  * Allowlist-based URL validator for markdown artifact rendering.
@@ -72,10 +74,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
 export default MarkdownRenderer;`);
 
 const wrapMarkdownRenderer = (content: string) => {
-  // Normalize indentation: convert 2-space indents to 4-space for proper nesting
   const normalizedContent = content.replace(/^( {2})(-|\d+\.)/gm, '    $2');
-
-  // Escape backticks, backslashes, and dollar signs in the content
   const escapedContent = normalizedContent
     .replace(/\\/g, '\\\\')
     .replace(/`/g, '\\`')
@@ -300,4 +299,12 @@ root.render(<App />);
     '/components/ui/MarkdownRenderer.tsx': markdownRenderer,
     'markdown.css': markdownCSS,
   };
+};
+
+export const normalizeAssistantDownloadMarkdown = (content: string): string => {
+  if (!content.includes('/api/files/download/')) {
+    return content;
+  }
+
+  return content.replace(malformedAssistantDownloadLinkRegex, '[$1]($3)');
 };

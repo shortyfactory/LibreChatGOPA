@@ -50,6 +50,27 @@ const isAssistantBuilderUpload = (metadata = {}) =>
   metadata.message_file !== true &&
   metadata.message_file !== 'true';
 
+const isAzureAssistantDownload = ({ file, file_id }) => {
+  if (file.source === FileSources.azure) {
+    return true;
+  }
+
+  if (!/^assistant-/i.test(file_id)) {
+    return false;
+  }
+
+  const filepath = typeof file?.filepath === 'string' ? file.filepath : '';
+  if (!filepath) {
+    return false;
+  }
+
+  return (
+    filepath.includes('.openai.azure.com/') ||
+    filepath.includes('.services.ai.azure.com/') ||
+    (filepath.includes('/openai/files/') && !filepath.includes('api.openai.com/v1/files/'))
+  );
+};
+
 const setDownloadHeaders = ({ file, res, filename = file.filename, type = file.type }) => {
   const cleanedFilename = cleanFileName(filename);
   const metadata = {
@@ -88,10 +109,9 @@ const tryFoundryFileDownload = async ({ file, file_id, res }) => {
   }
 
   try {
-    const [foundryFileInfo, arrayBuffer] = await Promise.all([
-      getFoundryFileInfo(file_id),
-      getFoundryFileArrayBuffer(file_id),
-    ]);
+    const foundryFileInfo = await getFoundryFileInfo(file_id);
+    const resolvedFoundryFileId = foundryFileInfo?.id ?? file_id;
+    const arrayBuffer = await getFoundryFileArrayBuffer(resolvedFoundryFileId);
 
     setDownloadHeaders({
       file,
@@ -121,7 +141,7 @@ const resolveOpenAIStorageFile = async ({ openai, file_id, filename }) => {
   try {
     const retrievedFile = await openai.files.retrieve(file_id);
     return {
-      file_id: retrievedFile?.file_id ?? file_id,
+      file_id: retrievedFile?.file_id ?? retrievedFile?.id ?? file_id,
       filename: retrievedFile?.filename ?? filename,
     };
   } catch (error) {
@@ -457,21 +477,26 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
 
     // Access already validated by fileAccess middleware
     const file = req.fileAccess.file;
+    const effectiveSource = isAzureAssistantDownload({ file, file_id })
+      ? FileSources.azure
+      : file.source;
+    const downloadFile =
+      effectiveSource === file.source ? file : { ...file, source: effectiveSource };
 
-    const { getDownloadStream } = getStrategyFunctions(file.source);
+    const { getDownloadStream } = getStrategyFunctions(effectiveSource);
     if (!getDownloadStream) {
       logger.warn(
-        `File download requested by user ${userId} has no stream method implemented: ${file.source}`,
+        `File download requested by user ${userId} has no stream method implemented: ${effectiveSource}`,
       );
       return res.status(501).send('Not Implemented');
     }
 
-    if (await tryFoundryFileDownload({ file, file_id, res })) {
+    if (await tryFoundryFileDownload({ file: downloadFile, file_id, res })) {
       return;
     }
 
-    if (checkOpenAIStorage(file.source)) {
-      req.body = file.model ? { ...req.body, model: file.model } : { ...req.body };
+    if (checkOpenAIStorage(effectiveSource)) {
+      req.body = downloadFile.model ? { ...req.body, model: downloadFile.model } : { ...req.body };
       const endpointMap = {
         [FileSources.openai]: EModelEndpoint.assistants,
         [FileSources.azure]: AzureAssistantsOldEndpoint,
@@ -479,19 +504,19 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
       const { openai } = await getOpenAIClient({
         req,
         res,
-        overrideEndpoint: endpointMap[file.source],
+        overrideEndpoint: endpointMap[effectiveSource],
       });
       const resolvedStorageFile = await resolveOpenAIStorageFile({
         openai,
         file_id,
-        filename: file.filename,
+        filename: downloadFile.filename,
       });
       logger.debug(`Downloading file ${resolvedStorageFile.file_id} from OpenAI`);
       const passThrough = await getDownloadStream(resolvedStorageFile.file_id, openai);
       setDownloadHeaders({
-        file,
+        file: downloadFile,
         res,
-        filename: resolvedStorageFile.filename ?? file.filename,
+        filename: resolvedStorageFile.filename ?? downloadFile.filename,
         type: 'application/octet-stream',
       });
       logger.debug(`File ${resolvedStorageFile.file_id} downloaded from OpenAI`);
@@ -504,14 +529,14 @@ router.get('/download/:userId/:file_id', fileAccess, async (req, res) => {
 
       stream.pipe(res);
     } else {
-      const fileStream = await getDownloadStream(req, file.filepath);
+      const fileStream = await getDownloadStream(req, downloadFile.filepath);
 
       fileStream.on('error', (streamError) => {
         logger.error('[DOWNLOAD ROUTE] Stream error:', streamError);
       });
 
       setDownloadHeaders({
-        file,
+        file: downloadFile,
         res,
         type: 'application/octet-stream',
       });

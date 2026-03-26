@@ -679,7 +679,10 @@ class StreamRunManager {
    * The Completed Message event object.
    */
   async messageCompleted(event) {
-    const message = event.data;
+    const message = {
+      ...event.data,
+      assistant_id: event.data.assistant_id ?? this.req.body.assistant_id,
+    };
     const result = await processMessages({
       openai: this.openai,
       client: this,
