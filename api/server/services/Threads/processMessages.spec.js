@@ -1105,6 +1105,96 @@ These points highlight Harry's initial experiences in the magical world and set 
     expect(result.edited).toBe(true);
   });
 
+  test('appends a download link when an assistant output file exists but no file_path annotation is present', async () => {
+    const messages = [
+      {
+        id: 'msg_output_without_link',
+        created_at: 1722983745,
+        assistant_id: 'asst_output_without_link',
+        content: [
+          {
+            type: 'text',
+            text: {
+              value:
+                'Here is your professional Excel file in French for GOPA’s presentation to GIZ:',
+              annotations: [],
+            },
+          },
+        ],
+        files: [
+          {
+            id: 'file-output-123',
+            file_id: 'file-output-123',
+            filename: 'Projet_GPE_GIZ_GOPA_presentation.xlsx',
+            purpose: 'assistants_output',
+            context: 'assistants_output',
+          },
+        ],
+      },
+    ];
+
+    const result = await processMessages({
+      openai: {},
+      client: {
+        processedFileIds: new Set(),
+        req: {
+          user: { id: 'test-user-id' },
+        },
+      },
+      messages,
+    });
+
+    expect(result.text).toBe(
+      'Here is your professional Excel file in French for GOPA’s presentation to GIZ:\n\n[Projet_GPE_GIZ_GOPA_presentation.xlsx](/api/files/download/test-user-id/file-output-123)',
+    );
+    expect(result.edited).toBe(true);
+  });
+
+  test('does not append a duplicate fallback download link when the assistant text already contains one', async () => {
+    const messages = [
+      {
+        id: 'msg_output_with_link',
+        created_at: 1722983745,
+        assistant_id: 'asst_output_with_link',
+        content: [
+          {
+            type: 'text',
+            text: {
+              value:
+                'Download here:\n\n[Projet_GPE_GIZ_GOPA_presentation.xlsx](/api/files/download/test-user-id/file-output-123)',
+              annotations: [],
+            },
+          },
+        ],
+        files: [
+          {
+            id: 'file-output-123',
+            file_id: 'file-output-123',
+            filename: 'Projet_GPE_GIZ_GOPA_presentation.xlsx',
+            purpose: 'assistants_output',
+            context: 'assistants_output',
+          },
+        ],
+      },
+    ];
+
+    const result = await processMessages({
+      openai: {},
+      client: {
+        processedFileIds: new Set(),
+        req: {
+          user: { id: 'test-user-id' },
+        },
+      },
+      messages,
+    });
+
+    expect(result.text).toBe(
+      'Download here:\n\n[Projet_GPE_GIZ_GOPA_presentation.xlsx](/api/files/download/test-user-id/file-output-123)',
+    );
+    expect(result.edited).toBe(false);
+  });
+
   test('replaces plain file reference ids with known filenames', async () => {
     const messages = [
       {

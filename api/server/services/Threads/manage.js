@@ -5,6 +5,7 @@ const {
   Constants,
   ContentTypes,
   AnnotationTypes,
+  FileContext,
   defaultOrderQuery,
 } = require('librechat-data-provider');
 const { retrieveAndProcessFile } = require('~/server/services/Files/process');
@@ -266,6 +267,53 @@ function replaceFileReferenceIds(currentText, fileNamesById) {
   }
 
   return nextText;
+}
+
+function isAssistantOutputFile(file) {
+  return (
+    file?.context === FileContext.assistants_output ||
+    file?.purpose === FileContext.assistants_output
+  );
+}
+
+function hasAssistantDownloadReference(currentText, file) {
+  if (!currentText || !file) {
+    return false;
+  }
+
+  const references = [file.file_id, file.id, file.filename]
+    .filter(Boolean)
+    .map((value) => String(value));
+
+  return references.some((reference) => currentText.includes(reference));
+}
+
+function buildMissingAssistantDownloadLinks({ files, userId, currentText }) {
+  if (!userId || !Array.isArray(files) || files.length === 0) {
+    return '';
+  }
+
+  const links = files
+    .filter(isAssistantOutputFile)
+    .filter((file) => file?.file_id || file?.id)
+    .filter((file) => !hasAssistantDownloadReference(currentText, file))
+    .map((file) => {
+      const fileId = file.file_id ?? file.id;
+      const filename = file.filename ?? fileId;
+      const downloadPath = getAssistantDownloadPath({
+        userId,
+        file_id: fileId,
+        filepath: file.filepath,
+      });
+
+      return `[${filename}](${downloadPath})`;
+    });
+
+  if (links.length === 0) {
+    return '';
+  }
+
+  return `\n\n${links.join('\n')}`;
 }
 
 /**
@@ -599,6 +647,7 @@ async function processMessages({ openai, client, messages = [] }) {
   const fileRetrievalPromises = [];
 
   for (const message of sorted) {
+    const messageTextStart = text.length;
     const existingFiles = Array.isArray(message.files) ? [...message.files] : [];
     existingFiles.forEach((file) => rememberFileReference(fileNamesById, file));
     message.files = existingFiles;
@@ -731,6 +780,17 @@ async function processMessages({ openai, client, messages = [] }) {
         edited = true;
       }
       text += nextText;
+    }
+
+    const appendedLinks = buildMissingAssistantDownloadLinks({
+      files: message.files,
+      userId: client.req?.user?.id,
+      currentText: text.slice(messageTextStart),
+    });
+
+    if (appendedLinks) {
+      text += appendedLinks;
+      edited = true;
     }
   }
 
