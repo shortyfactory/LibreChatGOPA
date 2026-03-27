@@ -24,9 +24,15 @@ const middleware = require('~/server/middleware');
 const { getLogStores } = require('~/cache');
 const { requestPasswordReset } = require('~/server/services/AuthService');
 const { getAppConfig } = require('~/server/services/Config');
-const { purgeAllSidebarUploadsNow } = require('~/server/services/FileRetentionService');
+const { processDeleteRequest } = require('~/server/services/Files/process');
+const {
+  buildSystemDeleteRequest,
+  purgeAllSidebarUploadsNow,
+} = require('~/server/services/FileRetentionService');
 const {
   deleteAllUserSessions,
+  deleteFiles,
+  getFiles,
   getSidebarFileRetentionSettings,
   updateSidebarFileRetentionSettings,
   getSidebarUploadCountsByUserIds,
@@ -74,8 +80,30 @@ const clearBanCacheForUser = async (userId) => {
   }
 };
 
-const deleteUserAndRelatedData = async (user) => {
+const deleteUserFilesAndRecords = async ({ appConfig, userId }) => {
+  const deleteRequest = buildSystemDeleteRequest(appConfig, userId);
+
+  try {
+    const userFiles = await getFiles({ user: userId });
+
+    if (Array.isArray(userFiles) && userFiles.length > 0) {
+      await processDeleteRequest({ req: deleteRequest, files: userFiles });
+    }
+  } catch (error) {
+    logger.error('[admin] Failed to delete user files before removing the account', error);
+  }
+
+  try {
+    await deleteFiles(null, userId);
+  } catch (error) {
+    logger.error('[admin] Failed to delete user file records after cleanup attempt', error);
+  }
+};
+
+const deleteUserAndRelatedData = async ({ appConfig, user }) => {
   const userId = String(user._id);
+
+  await deleteUserFilesAndRecords({ appConfig, userId });
 
   await Promise.all([
     Action.deleteMany({ user: userId }),
@@ -85,7 +113,6 @@ const deleteUserAndRelatedData = async (user) => {
     ConversationTag.deleteMany({ user: userId }),
     Conversation.deleteMany({ user: userId }),
     Message.deleteMany({ user: userId }),
-    File.deleteMany({ user: userId }),
     Key.deleteMany({ userId }),
     MemoryEntry.deleteMany({ userId }),
     PluginAuth.deleteMany({ userId }),
@@ -392,7 +419,12 @@ router.delete('/users/:userId', async (req, res) => {
       return res.status(400).json({ message: 'You cannot delete your own account' });
     }
 
-    await deleteUserAndRelatedData(targetUser);
+    const appConfig = req.config ?? (await getAppConfig({ role: req.user?.role }));
+
+    await deleteUserAndRelatedData({
+      appConfig,
+      user: targetUser,
+    });
 
     return res
       .status(200)

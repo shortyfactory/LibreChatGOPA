@@ -234,7 +234,6 @@ export const createAdminDeepLJobsResponse = (
       source: job.sourceLanguage ?? null,
       target: job.targetLanguage ?? null,
       documentId: job.documentId ?? null,
-      documentKey: job.documentKey ?? null,
       uploadProviderStatus: job.uploadProviderStatus ?? null,
       uploadProviderDetails: job.uploadProviderDetails,
       latestStatusProviderDetails: job.latestStatusProviderDetails,

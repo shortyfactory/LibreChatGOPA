@@ -148,6 +148,7 @@ const stopFileRetentionCleanup = () => {
 };
 
 module.exports = {
+  buildSystemDeleteRequest,
   initializeFileRetentionCleanup,
   stopFileRetentionCleanup,
   purgeAllSidebarUploadsNow,

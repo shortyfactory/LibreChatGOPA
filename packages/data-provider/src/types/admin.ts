@@ -242,7 +242,6 @@ export interface AdminDeepLJobSummary {
   source: string | null;
   target: string | null;
   documentId: string | null;
-  documentKey: string | null;
   uploadProviderStatus: string | null;
   uploadProviderDetails?: AdminDeepLJobProviderDetails;
   latestStatusProviderDetails?: AdminDeepLJobProviderDetails;

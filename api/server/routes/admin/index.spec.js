@@ -58,7 +58,23 @@ jest.mock('~/server/services/AuthService', () => ({
   requestPasswordReset: jest.fn(),
 }));
 
+jest.mock('~/server/services/Files/process', () => ({
+  processDeleteRequest: jest.fn(),
+}));
+
 jest.mock('~/server/services/FileRetentionService', () => ({
+  buildSystemDeleteRequest: jest.fn((appConfig, userId) => ({
+    baseUrl: '/api/assistants/v2',
+    body: {},
+    config: appConfig,
+    headers: {
+      authorization: `Bearer token-${userId}`,
+    },
+    user: {
+      id: String(userId),
+      role: 'ADMIN',
+    },
+  })),
   purgeAllSidebarUploadsNow: jest.fn(),
 }));
 
@@ -82,6 +98,7 @@ jest.mock('~/cache', () => {
 });
 
 const { requestPasswordReset } = require('~/server/services/AuthService');
+const { processDeleteRequest } = require('~/server/services/Files/process');
 const { purgeAllSidebarUploadsNow } = require('~/server/services/FileRetentionService');
 const { __stores } = require('~/cache');
 
@@ -438,6 +455,18 @@ describe('Admin routes', () => {
       emailVerified: true,
     });
 
+    await File.create({
+      user: targetUserId,
+      file_id: 'delete-user-file',
+      bytes: 128,
+      filepath: `/uploads/${targetUserId}/delete-user-file.txt`,
+      filename: 'delete-user-file.txt',
+      type: 'text/plain',
+      source: 'local',
+      context: 'message_attachment',
+      retentionEligible: true,
+    });
+
     const response = await request(app).delete(`/admin/users/${targetUserId}`);
 
     expect(response.status).toBe(200);
@@ -446,6 +475,26 @@ describe('Admin routes', () => {
       userId: String(targetUserId),
       email: 'delete@example.com',
     });
+    expect(processDeleteRequest).toHaveBeenCalledWith({
+      req: expect.objectContaining({
+        baseUrl: '/api/assistants/v2',
+        body: {},
+        config: { fileStrategy: 'local' },
+        headers: {
+          authorization: `Bearer token-${String(targetUserId)}`,
+        },
+        user: {
+          id: String(targetUserId),
+          role: 'ADMIN',
+        },
+      }),
+      files: [
+        expect.objectContaining({
+          file_id: 'delete-user-file',
+        }),
+      ],
+    });
+    expect(await File.countDocuments({ user: targetUserId })).toBe(0);
     expect(await User.findById(targetUserId).lean()).toBeNull();
   });
 
@@ -478,6 +527,8 @@ describe('Admin routes', () => {
         status: 'completed',
       }),
     );
+    expect(response.body.jobs[0].documentKey).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(response.body.jobs[0], 'documentKey')).toBe(false);
   });
 
   test('POST /admin/analytics/file-retention/purge returns purge summary', async () => {
